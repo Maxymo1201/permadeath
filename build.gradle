@@ -1,0 +1,236 @@
+import java.util.zip.ZipFile
+
+plugins {
+    id 'java'
+    id 'idea'
+    id 'net.neoforged.moddev' version '2.0.148'
+}
+
+version = mod_version
+group = mod_group_id
+
+base {
+    archivesName = mod_id
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Calendar profiles. Both production jars are built from the SAME compiled classes; the only
+// difference is the fixed profile descriptor (permadeath_profile.properties) packed in each jar.
+// ---------------------------------------------------------------------------------------------
+def PROFILES = ['GAME60', 'REAL30']
+def devProfile = (project.findProperty('permadeathMode') ?: 'GAME60').toString().toUpperCase(Locale.ROOT)
+if (!PROFILES.contains(devProfile)) {
+    throw new GradleException("permadeathMode must be one of ${PROFILES}, got '${devProfile}'")
+}
+
+sourceSets {
+    // Loader-independent core (calendar, rules, persistence model). No Minecraft/NeoForge imports.
+    core
+    coreTest {
+        compileClasspath += core.output
+        runtimeClasspath += core.output
+    }
+    // Profile descriptor used only by the dev runs (runServer/runClient/runGameTestServer).
+    profileDev {
+        java.srcDirs = []
+        resources.srcDirs = ["src/profiles/${devProfile}"]
+    }
+    main {
+        compileClasspath += core.output
+        runtimeClasspath += core.output
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    coreTestImplementation platform('org.junit:junit-bom:5.11.3')
+    coreTestImplementation 'org.junit.jupiter:junit-jupiter'
+    coreTestRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+neoForge {
+    version = project.neo_version
+
+    validateAccessTransformers = true
+
+    runs {
+        client {
+            client()
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
+        server {
+            server()
+            programArgument '--nogui'
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
+        gameTestServer {
+            type = 'gameTestServer'
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
+        configureEach {
+            systemProperty 'forge.logging.markers', 'REGISTRIES'
+            logLevel = org.slf4j.event.Level.INFO
+        }
+    }
+
+    mods {
+        "${mod_id}" {
+            sourceSet(sourceSets.main)
+            sourceSet(sourceSets.core)
+            sourceSet(sourceSets.profileDev)
+        }
+    }
+}
+
+// neoforge.mods.toml is generated from a template so that versions stay in gradle.properties.
+def generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
+    def replaceProperties = [
+            minecraft_version      : minecraft_version,
+            minecraft_version_range: minecraft_version_range,
+            neo_version            : neo_version,
+            neo_version_range      : neo_version_range,
+            loader_version_range   : loader_version_range,
+            mod_id                 : mod_id,
+            mod_name               : mod_name,
+            mod_license            : mod_license,
+            mod_version            : mod_version,
+            mod_authors            : mod_authors,
+            mod_description        : mod_description
+    ]
+    inputs.properties replaceProperties
+    expand replaceProperties
+    from 'src/main/templates'
+    into 'build/generated/sources/modMetadata'
+}
+sourceSets.main.resources.srcDir generateModMetadata
+neoForge.ideSyncTask generateModMetadata
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 21
+}
+
+// ---------------------------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------------------------
+def coreTestTask = tasks.register('coreTest', Test) {
+    description = 'Unit tests of the loader-independent Permadeath core (calendars, rules, persistence).'
+    group = 'verification'
+    testClassesDirs = sourceSets.coreTest.output.classesDirs
+    classpath = sourceSets.coreTest.runtimeClasspath
+    useJUnitPlatform()
+    testLogging {
+        events 'passed', 'failed', 'skipped'
+        exceptionFormat 'full'
+    }
+}
+tasks.named('check') { dependsOn coreTestTask }
+
+// ---------------------------------------------------------------------------------------------
+// Production jars: permadeath-GAME60-neoforge-1.21.1.jar / permadeath-REAL30-neoforge-1.21.1.jar
+// ---------------------------------------------------------------------------------------------
+tasks.named('jar') {
+    // A jar without a calendar profile must never be distributed (the mod refuses to load without one).
+    enabled = false
+}
+
+PROFILES.each { profile ->
+    tasks.register("jar${profile}", Jar) {
+        group = 'build'
+        description = "Builds the ${profile} NeoForge jar."
+        dependsOn tasks.named('classes'), tasks.named('coreClasses')
+        archiveFileName = "permadeath-${profile}-neoforge-${minecraft_version}.jar"
+        destinationDirectory = layout.buildDirectory.dir('libs')
+        from(sourceSets.main.output)
+        from(sourceSets.core.output)
+        from("src/profiles/${profile}")
+        from('LICENSE')
+        duplicatesStrategy = DuplicatesStrategy.FAIL
+        manifest {
+            attributes([
+                    'Specification-Title'     : mod_id,
+                    'Specification-Vendor'    : 'permadeath',
+                    'Specification-Version'   : '1',
+                    'Implementation-Title'    : "Permadeath ${profile}",
+                    'Implementation-Version'  : project.version,
+                    'Implementation-Vendor'   : 'permadeath',
+                    'Permadeath-Profile'      : profile,
+                    'Built-For-Minecraft'     : minecraft_version,
+                    'Built-Against-NeoForge'  : neo_version
+            ])
+        }
+    }
+}
+
+def verifyJars = tasks.register('verifyProductionJars') {
+    group = 'verification'
+    description = 'Inspects both production jars: NeoForge metadata present, no Fabric artifacts, correct profile.'
+    dependsOn 'jarGAME60', 'jarREAL30'
+    doLast {
+        PROFILES.each { profile ->
+            def file = layout.buildDirectory.file("libs/permadeath-${profile}-neoforge-${minecraft_version}.jar").get().asFile
+            if (!file.exists()) throw new GradleException("Missing jar ${file}")
+            new ZipFile(file).withCloseable { zip ->
+                def names = zip.entries().collect { it.name }
+                ['META-INF/neoforge.mods.toml', 'permadeath_profile.properties', "${mod_id}.mixins.json".toString(),
+                 'META-INF/accesstransformer.cfg', 'com/serthekiller/permadeath/PermadeathMod.class',
+                 'com/serthekiller/permadeath/core/ProgressionClock.class'].each { required ->
+                    if (!names.contains(required)) throw new GradleException("${file.name}: missing ${required}")
+                }
+                def forbidden = names.findAll { n ->
+                    n == 'fabric.mod.json' || n.startsWith('net/fabricmc/') || n.endsWith('.accesswidener') || n.contains('fabric-api')
+                }
+                if (!forbidden.isEmpty()) throw new GradleException("${file.name}: Fabric artifacts present: ${forbidden}")
+                // No compiled class may reference the Fabric namespace.
+                names.findAll { it.endsWith('.class') }.each { n ->
+                    def bytes = zip.getInputStream(zip.getEntry(n)).bytes
+                    def text = new String(bytes, 'ISO-8859-1')
+                    if (text.contains('net/fabricmc') || text.contains('net.fabricmc')) {
+                        throw new GradleException("${file.name}: ${n} references net.fabricmc")
+                    }
+                }
+                def props = new Properties()
+                zip.getInputStream(zip.getEntry('permadeath_profile.properties')).withCloseable { props.load(it) }
+                if (props.getProperty('mode') != profile) {
+                    throw new GradleException("${file.name}: profile descriptor says '${props.getProperty('mode')}', expected ${profile}")
+                }
+                def toml = zip.getInputStream(zip.getEntry('META-INF/neoforge.mods.toml')).getText('UTF-8')
+                if (!toml.contains('modLoader="javafml"') || !toml.contains("modId=\"neoforge\"") || toml.contains('${')) {
+                    throw new GradleException("${file.name}: neoforge.mods.toml is not a valid expanded NeoForge descriptor")
+                }
+                logger.lifecycle("[verifyProductionJars] ${file.name}: OK (${names.size()} entries, profile=${profile})")
+            }
+        }
+    }
+}
+
+tasks.register('buildGame60') {
+    group = 'build'
+    description = 'Builds and verifies permadeath-GAME60-neoforge-1.21.1.jar'
+    dependsOn 'jarGAME60', coreTestTask
+    finalizedBy verifyJars
+}
+
+tasks.register('buildReal30') {
+    group = 'build'
+    description = 'Builds and verifies permadeath-REAL30-neoforge-1.21.1.jar'
+    dependsOn 'jarREAL30', coreTestTask
+    finalizedBy verifyJars
+}
+
+tasks.named('assemble') { dependsOn 'jarGAME60', 'jarREAL30' }
+tasks.named('build') { dependsOn verifyJars }
+
+idea {
+    module {
+        downloadSources = true
+        downloadJavadoc = true
+    }
+}
