@@ -69,7 +69,25 @@ public final class ModItems {
     public static final DeferredItem<Item> PINK_NETHERITE_LEGGINGS = armor("pink_netherite_leggings", ModArmorMaterials.PINK_NETHERITE, ArmorItem.Type.LEGGINGS, 0.0);
     public static final DeferredItem<Item> PINK_NETHERITE_BOOTS = armor("pink_netherite_boots", ModArmorMaterials.PINK_NETHERITE, ArmorItem.Type.BOOTS, 0.0);
 
+    public static final ArmorSet NETHERITE = new ArmorSet(NETHERITE_HELMET, NETHERITE_CHESTPLATE, NETHERITE_LEGGINGS, NETHERITE_BOOTS);
+    public static final ArmorSet INFERNAL_NETHERITE = new ArmorSet(INFERNAL_NETHERITE_HELMET, INFERNAL_NETHERITE_CHESTPLATE, INFERNAL_NETHERITE_LEGGINGS, INFERNAL_NETHERITE_BOOTS);
+    public static final ArmorSet DEMONIC_NETHERITE = new ArmorSet(DEMONIC_NETHERITE_HELMET, DEMONIC_NETHERITE_CHESTPLATE, DEMONIC_NETHERITE_LEGGINGS, DEMONIC_NETHERITE_BOOTS);
+    public static final ArmorSet SCIENTIFIC_NETHERITE = new ArmorSet(SCIENTIFIC_NETHERITE_HELMET, SCIENTIFIC_NETHERITE_CHESTPLATE, SCIENTIFIC_NETHERITE_LEGGINGS, SCIENTIFIC_NETHERITE_BOOTS);
+    public static final ArmorSet BOMB_NETHERITE = new ArmorSet(BOMB_NETHERITE_HELMET, BOMB_NETHERITE_CHESTPLATE, BOMB_NETHERITE_LEGGINGS, BOMB_NETHERITE_BOOTS);
+    public static final ArmorSet PINK_NETHERITE = new ArmorSet(PINK_NETHERITE_HELMET, PINK_NETHERITE_CHESTPLATE, PINK_NETHERITE_LEGGINGS, PINK_NETHERITE_BOOTS);
+
     private ModItems() {
+    }
+
+    /** The four pieces of one custom armour set. */
+    public record ArmorSet(DeferredItem<Item> helmet, DeferredItem<Item> chestplate, DeferredItem<Item> leggings, DeferredItem<Item> boots) {
+        public List<DeferredItem<Item>> pieces() {
+            return List.of(helmet, chestplate, leggings, boots);
+        }
+
+        public boolean contains(net.minecraft.world.item.ItemStack stack) {
+            return stack.is(helmet.get()) || stack.is(chestplate.get()) || stack.is(leggings.get()) || stack.is(boots.get());
+        }
     }
 
     private static DeferredItem<Item> armor(String name, Holder<ArmorMaterial> material, ArmorItem.Type type, double bonusHealth) {
@@ -78,6 +96,6 @@ public final class ModItems {
     }
 
     public static List<DeferredItem<Item>> netheriteSet() {
-        return List.of(NETHERITE_HELMET, NETHERITE_CHESTPLATE, NETHERITE_LEGGINGS, NETHERITE_BOOTS);
+        return NETHERITE.pieces();
     }
 }
