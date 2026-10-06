@@ -49,19 +49,20 @@ public final class DeathHandler {
 
     /** Called from LivingDeathEvent; the work is done at the end of the tick, after the vanilla death logic. */
     public static void onPlayerDeath(ServerPlayer player) {
+        // The day of the death (not of the end of the tick) decides the Death Train duration and the sounds.
+        int day = Permadeath.day();
         ServerScheduler.schedule(0, () -> {
             if (player.isAlive() || !Permadeath.isRunning()) {
                 return;
             }
-            handle(player);
+            handle(player, day);
         });
     }
 
-    private static void handle(ServerPlayer player) {
+    private static void handle(ServerPlayer player, int day) {
         MinecraftServer server = player.server;
         ServerLevel level = player.serverLevel();
         String name = player.getName().getString();
-        int day = Permadeath.day();
         BlockPos deathPos = player.blockPosition();
 
         SurvivalAchievementData.get(server).recordDeath(player.getUUID());

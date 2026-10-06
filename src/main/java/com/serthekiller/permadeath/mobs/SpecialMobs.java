@@ -149,7 +149,7 @@ public final class SpecialMobs {
         giant.setYRot(entity.getYRot());
         configureGiant(giant, 15.0);
         level.addFreshEntity(giant);
-        if (entity.isAddedToWorld()) {
+        if (entity.isAddedToLevel()) {
             entity.discard();
         }
         return giant;

@@ -59,7 +59,7 @@ import java.util.UUID;
 @GameTestHolder(PermadeathMod.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class PermadeathGameTests {
-    private static final String EMPTY = "permadeath:gametest_empty";
+    private static final String EMPTY = "gametest_empty";
     private static final Random RANDOM_NAMES = new Random();
 
     private PermadeathGameTests() {
@@ -238,26 +238,33 @@ public final class PermadeathGameTests {
 
     // ------------------------------------------------------------------------------------------------ players
 
-    @GameTest(template = EMPTY, batch = "d0")
+    /** A player that just joined is invulnerable for 60 ticks (vanilla spawn protection): hit after that. */
+    private static final int AFTER_SPAWN_PROTECTION = 65;
+
+    @GameTest(template = EMPTY, batch = "d0", timeoutTicks = 120)
     public static void oneTotemSavesBeforeD30(GameTestHelper helper) {
         ServerPlayer player = mockPlayer(helper);
         player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.TOTEM_OF_UNDYING));
-        player.hurt(helper.getLevel().damageSources().generic(), 1000.0F);
-        helper.assertTrue(player.isAlive(), "a single totem must save the player before D30");
-        helper.assertTrue(player.getMainHandItem().isEmpty(), "the totem must be consumed");
-        finish(helper, player);
+        helper.runAtTickTime(AFTER_SPAWN_PROTECTION, () -> {
+            player.hurt(helper.getLevel().damageSources().generic(), 1000.0F);
+            helper.assertTrue(player.isAlive(), "a single totem must save the player before D30");
+            helper.assertTrue(player.getMainHandItem().isEmpty(), "the totem must be consumed");
+            finish(helper, player);
+        });
     }
 
-    @GameTest(template = EMPTY, batch = "d40")
+    @GameTest(template = EMPTY, batch = "d40", timeoutTicks = 120)
     public static void oneTotemIsNotEnoughOnD40(GameTestHelper helper) {
         ServerPlayer player = mockPlayer(helper);
         player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.TOTEM_OF_UNDYING));
-        DamageSource source = helper.getLevel().damageSources().generic();
-        player.hurt(source, 1000.0F);
-        helper.assertTrue(player.isDeadOrDying(), "D40 requires two totems: the player must die");
-        helper.assertTrue(player.getMainHandItem().isEmpty(), "the insufficient totem is consumed");
-        // The dead player is banned and disconnected by DeathHandler 80 ticks later.
-        helper.succeed();
+        helper.runAtTickTime(AFTER_SPAWN_PROTECTION, () -> {
+            DamageSource source = helper.getLevel().damageSources().generic();
+            player.hurt(source, 1000.0F);
+            helper.assertTrue(player.isDeadOrDying(), "D40 requires two totems: the player must die");
+            helper.assertTrue(player.getMainHandItem().isEmpty(), "the insufficient totem is consumed");
+            // The dead player is banned and disconnected by DeathHandler 80 ticks later.
+            helper.succeed();
+        });
     }
 
     @GameTest(template = EMPTY, batch = "d0")

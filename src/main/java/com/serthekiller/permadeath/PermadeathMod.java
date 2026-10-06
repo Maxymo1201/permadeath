@@ -27,7 +27,7 @@ public final class PermadeathMod {
     public static final Logger LOGGER = LogUtils.getLogger();
 
     public PermadeathMod(IEventBus modBus) {
-        LOGGER.info("[Permadeath] Loading Permadeath {} (calendar {})", PermadeathMod.class.getPackage().getImplementationVersion(),
+        LOGGER.info("[Permadeath] Loading Permadeath {} (calendar {})", java.util.Objects.requireNonNullElse(PermadeathMod.class.getPackage().getImplementationVersion(), "dev"),
                 BuildProfile.mode());
         ModArmorMaterials.ARMOR_MATERIALS.register(modBus);
         ModBlocks.BLOCKS.register(modBus);

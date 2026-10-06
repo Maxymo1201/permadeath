@@ -138,7 +138,7 @@ public final class SkeletonClasses {
         MobTracking.markProcessed(skeleton, CLASSED_KEY);
         MobTracking.markProcessed(skeleton, tier.classKey());
         Entity actualVehicle = vehicle != null ? vehicle : skeleton.getVehicle();
-        boolean fresh = vehicle != null && !skeleton.isAddedToWorld();
+        boolean fresh = vehicle != null && !skeleton.isAddedToLevel();
         if (tier == Tier.D60) {
             int roll = level.random.nextInt(99);
             if (roll < 14) {
@@ -323,7 +323,7 @@ public final class SkeletonClasses {
             }
             wither.startRiding(vehicle, forceRide);
         }
-        if (original.isAddedToWorld()) {
+        if (original.isAddedToLevel()) {
             original.discard();
         }
     }

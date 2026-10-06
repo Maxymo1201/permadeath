@@ -43,6 +43,12 @@ sourceSets {
         compileClasspath += core.output
         runtimeClasspath += core.output
     }
+    // Empty source set of the "smokeServer" run: that run must NOT see the mod classes, it loads the
+    // production jar from its mods/ folder (tools/server-smoke-test.sh).
+    smokeRuntime {
+        java.srcDirs = []
+        resources.srcDirs = []
+    }
 }
 
 repositories {
@@ -74,11 +80,24 @@ neoForge {
             type = 'gameTestServer'
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }
+        // Dedicated NeoForge server WITHOUT the dev mod: tools/server-smoke-test.sh copies a production jar
+        // (build/libs/permadeath-<PROFILE>-neoforge-1.21.1.jar) into <smokeDir>/mods and drives this run.
+        smokeServer {
+            server()
+            programArgument '--nogui'
+            sourceSet = sourceSets.smokeRuntime
+            loadedMods = []
+            gameDirectory = project.file(project.findProperty('smokeDir') ?: 'build/smoke-run')
+            disableIdeRun()
+        }
         configureEach {
             systemProperty 'forge.logging.markers', 'REGISTRIES'
             logLevel = org.slf4j.event.Level.INFO
         }
     }
+
+    // The smokeServer run needs Minecraft/NeoForge on its classpath but none of the mod classes.
+    addModdingDependenciesTo(sourceSets.smokeRuntime)
 
     mods {
         "${mod_id}" {
@@ -111,6 +130,46 @@ def generateModMetadata = tasks.register('generateModMetadata', ProcessResources
 }
 sourceSets.main.resources.srcDir generateModMetadata
 neoForge.ideSyncTask generateModMetadata
+
+// ---------------------------------------------------------------------------------------------
+// Server-side runs never read the client assets (sounds, languages, textures), but ModDevGradle prepares every
+// run with the downloaded asset index. Server runs get a stub asset descriptor instead, so they do not need
+// resources.download.minecraft.net. Client runs keep the real assets.
+// ---------------------------------------------------------------------------------------------
+def serverAssetStub = layout.buildDirectory.file('moddev/server-run-assets.properties')
+def writeServerAssetStub = tasks.register('writeServerAssetStub') {
+    outputs.file(serverAssetStub)
+    doLast {
+        def file = serverAssetStub.get().asFile
+        file.parentFile.mkdirs()
+        file.text = "asset_index=17\nassets_root=${file.parentFile.absolutePath.replace('\\', '/')}/server-run-assets\n"
+    }
+}
+tasks.matching { it.name in ['prepareServerRun', 'prepareGameTestServerRun', 'prepareSmokeServerRun'] }.configureEach {
+    dependsOn writeServerAssetStub
+    assetProperties.set(serverAssetStub)
+}
+// tools/server-smoke-test.sh launches the smokeServer JVM itself (Gradle does not reliably forward the console
+// commands it pipes in): this task prepares the run and writes the exact java command line of runSmokeServer.
+tasks.register('writeSmokeServerCommand') {
+    group = 'verification'
+    description = 'Prepares the smokeServer run and writes its java command to build/moddev/smokeServerCommand.txt'
+    dependsOn 'prepareSmokeServerRun', 'smokeRuntimeClasses'
+    def output = layout.buildDirectory.file('moddev/smokeServerCommand.txt')
+    def moddevDir = layout.buildDirectory.dir('moddev')
+    def classpath = sourceSets.smokeRuntime.runtimeClasspath
+    outputs.upToDateWhen { false }
+    doLast {
+        // Same command line as runSmokeServer (ModDevGradle 2.0): devlaunch + the prepared argument files.
+        def dir = moddevDir.get().asFile
+        def command = [javaToolchains.launcherFor(java.toolchain).get().executablePath.asFile.absolutePath,
+                       '-Dfml.modFolders', '@' + new File(dir, 'smokeServerRunVmArgs.txt').absolutePath,
+                       '-Dfile.encoding=UTF-8',
+                       '-cp', classpath.asPath,
+                       'net.neoforged.devlaunch.Main', '@' + new File(dir, 'smokeServerRunProgramArgs.txt').absolutePath]
+        output.get().asFile.text = command.join('\n') + '\n'
+    }
+}
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'

@@ -291,5 +291,4 @@ public final class ExplodingAnimals {
         }
     }
 
-    }
 }
