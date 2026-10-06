@@ -74,6 +74,19 @@ public final class PhaseManager {
         }
     }
 
+    /** /permadeath reload: ends the active phase and starts it again on the next tick. */
+    public static void reload(MinecraftServer server) {
+        PhaseHandler old = current();
+        if (old != null) {
+            try {
+                old.onPhaseEnd(server.overworld());
+            } catch (RuntimeException e) {
+                PermadeathMod.LOGGER.error("[Permadeath] onPhaseEnd failed for phase {}", currentPhase, e);
+            }
+        }
+        currentPhase = -1;
+    }
+
     public static void reset() {
         currentPhase = -1;
     }
