@@ -74,7 +74,7 @@ public final class HostileMobConverter {
         return type == EntityType.WOLF || type == EntityType.BEE || type == EntityType.POLAR_BEAR || type == EntityType.FROG
                 || type == EntityType.ZOMBIFIED_PIGLIN || type == EntityType.AXOLOTL || type == EntityType.PIGLIN
                 || type == EntityType.FOX || type == EntityType.SNOW_GOLEM || type == EntityType.LLAMA
-                || type == EntityType.PANDA || type == EntityType.OCELOT;
+                || type == EntityType.LLAMA_SPIT || type == EntityType.OCELOT;
     }
 
     public static boolean isAlreadyHostile(LivingEntity entity) {
@@ -96,9 +96,9 @@ public final class HostileMobConverter {
                 || type == EntityType.ALLAY || type == EntityType.AXOLOTL || type == EntityType.GLOW_SQUID
                 || type == EntityType.SQUID || type == EntityType.DOLPHIN || type == EntityType.TADPOLE
                 || type == EntityType.FROG || type == EntityType.WOLF || type == EntityType.BEE
-                || type == EntityType.POLAR_BEAR || type == EntityType.BAT || type == EntityType.STRIDER
+                || type == EntityType.POLAR_BEAR || type == EntityType.BAT || type == EntityType.ZOGLIN
                 || type == EntityType.ZOMBIFIED_PIGLIN || type == EntityType.PIGLIN || type == EntityType.OCELOT
-                || type == EntityType.LLAMA || type == EntityType.FOX || type == EntityType.PANDA;
+                || type == EntityType.LLAMA || type == EntityType.FOX || type == EntityType.LLAMA_SPIT;
     }
 
     public static void convertToHostile(LivingEntity entity) {
