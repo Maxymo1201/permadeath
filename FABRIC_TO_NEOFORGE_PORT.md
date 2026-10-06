@@ -86,7 +86,8 @@ Para cada pieza del mod Fabric se indica qué hace ahora el port y por qué. Pre
 
 **Mixins que quedan: 4** (`ChunkGeneratorMixin`, `EndGatewayBlockMixin`, `MobMixin`, `ShulkerMixin`), todos
 `@Inject` en `HEAD` con `defaultRequire = 1`. Si cambia un objetivo, el arranque falla de forma visible en
-lugar de seguir sin la funcionalidad.
+lugar de seguir sin la funcionalidad. La única excepción es el empuje del shulker montado al abrirse
+(`onPeekAmountChange`, `require = 0`): es un detalle menor y nunca debe impedir que el servidor arranque.
 
 ## 4. Sistemas propios del mod
 

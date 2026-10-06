@@ -39,8 +39,8 @@ public final class DragonFireballs {
             return;
         }
         HitResult result = event.getRayTraceResult();
-        if (result.getType() == HitResult.Type.ENTITY && ball.ownedBy(((EntityHitResult) result).getEntity())) {
-            return; // vanilla ignores the hit as well
+        if (result.getType() == HitResult.Type.ENTITY && ((EntityHitResult) result).getEntity() == ball.getOwner()) {
+            return; // vanilla ignores hits on its owner as well
         }
         boolean enraged = ball.getOwner() instanceof EnderDragon dragon && EnderDragonDemon.isEnraged(dragon);
         double roll = level.getRandom().nextDouble() * 100.0;

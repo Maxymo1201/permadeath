@@ -1,5 +1,6 @@
 package com.serthekiller.permadeath.gametest;
 
+import com.mojang.authlib.GameProfile;
 import com.serthekiller.permadeath.PermadeathMod;
 import com.serthekiller.permadeath.core.PermadeathCalendar;
 import com.serthekiller.permadeath.mechanics.LockedSlots;
@@ -7,14 +8,23 @@ import com.serthekiller.permadeath.phase.PhaseManager;
 import com.serthekiller.permadeath.progression.DayController;
 import com.serthekiller.permadeath.progression.Permadeath;
 import com.serthekiller.permadeath.recipes.RecipeFilter;
+import io.netty.channel.embedded.EmbeddedChannel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.BeforeBatch;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.network.Connection;
+import net.minecraft.network.PacketSendListener;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.PacketFlow;
+import net.minecraft.network.protocol.common.ClientboundKeepAlivePacket;
+import net.minecraft.network.protocol.common.ServerboundKeepAlivePacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
@@ -35,8 +45,12 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.EntityTravelToDimensionEvent;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+import net.neoforged.neoforge.network.registration.NetworkRegistry;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import java.util.Random;
+import java.util.UUID;
 
 /**
  * In-game tests of the day-dependent rules, run with {@code gradlew runGameTestServer}. The calendar is global,
@@ -46,6 +60,7 @@ import java.util.List;
 @PrefixGameTestTemplate(false)
 public final class PermadeathGameTests {
     private static final String EMPTY = "permadeath:gametest_empty";
+    private static final Random RANDOM_NAMES = new Random();
 
     private PermadeathGameTests() {
     }
@@ -75,6 +90,52 @@ public final class PermadeathGameTests {
     @BeforeBatch(batch = "d60")
     public static void day60(ServerLevel level) {
         setDay(level, 60);
+    }
+
+
+    /**
+     * Server player with an in-memory connection, configured like the NeoForge test framework does
+     * (ExtendedGameTestHelper#makeTickingMockServerPlayerInLevel) so that NeoForge networking accepts it.
+     */
+    private static ServerPlayer mockPlayer(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        CommonListenerCookie cookie = CommonListenerCookie.createInitial(new GameProfile(UUID.randomUUID(), "pd-test-" + RANDOM_NAMES.nextInt(100000)), false);
+        ServerPlayer player = new ServerPlayer(level.getServer(), level, cookie.gameProfile(), cookie.clientInformation());
+        Connection connection = new Connection(PacketFlow.SERVERBOUND) {
+            @Override
+            public void tick() {
+                super.tick();
+                player.resetLastActionTime();
+            }
+
+            @Override
+            public boolean isMemoryConnection() {
+                return true;
+            }
+
+            @Override
+            public void send(Packet<?> packet, @Nullable PacketSendListener listener, boolean flush) {
+                super.send(packet, listener, flush);
+                if (packet instanceof ClientboundKeepAlivePacket keepAlive) {
+                    player.connection.handleKeepAlive(new ServerboundKeepAlivePacket(keepAlive.getId()));
+                }
+            }
+        };
+        new EmbeddedChannel(connection);
+        NetworkRegistry.configureMockConnection(connection);
+        level.getServer().getPlayerList().placeNewPlayer(connection, player, cookie);
+        level.getServer().getConnection().getConnections().add(connection);
+        player.gameMode.changeGameModeForPlayer(GameType.SURVIVAL);
+        BlockPos pos = helper.absolutePos(new BlockPos(1, 1, 1));
+        player.teleportTo(level, pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, 0.0F, 0.0F);
+        return player;
+    }
+
+    private static void finish(GameTestHelper helper, ServerPlayer player) {
+        if (!player.hasDisconnected()) {
+            player.connection.disconnect(Component.literal("Permadeath GameTest finished"));
+        }
+        helper.succeed();
     }
 
     // ------------------------------------------------------------------------------------------------ calendar
@@ -125,7 +186,7 @@ public final class PermadeathGameTests {
     @GameTest(template = EMPTY, batch = "d60", timeoutTicks = 100)
     public static void drowningTenTimesFasterOnD60(GameTestHelper helper) {
         Pig pig = submergedPig(helper);
-        helper.runAfterDelay(10, () -> {
+        helper.runAtTickTime(10, () -> {
             // vanilla: about 300 - 10 = 290 air left; x10: about 300 - 100.
             helper.assertTrue(pig.getAirSupply() <= 230, "D60 air should drop ~10/tick, air = " + pig.getAirSupply());
             helper.succeed();
@@ -135,7 +196,7 @@ public final class PermadeathGameTests {
     @GameTest(template = EMPTY, batch = "d0", timeoutTicks = 100)
     public static void drowningVanillaBeforeD50(GameTestHelper helper) {
         Pig pig = submergedPig(helper);
-        helper.runAfterDelay(10, () -> {
+        helper.runAtTickTime(10, () -> {
             helper.assertTrue(pig.getAirSupply() >= 280, "D0 air should drop ~1/tick, air = " + pig.getAirSupply());
             helper.succeed();
         });
@@ -179,61 +240,58 @@ public final class PermadeathGameTests {
 
     @GameTest(template = EMPTY, batch = "d0")
     public static void oneTotemSavesBeforeD30(GameTestHelper helper) {
-        ServerPlayer player = helper.makeMockServerPlayerInLevel();
-        player.setGameMode(GameType.SURVIVAL);
+        ServerPlayer player = mockPlayer(helper);
         player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.TOTEM_OF_UNDYING));
         player.hurt(helper.getLevel().damageSources().generic(), 1000.0F);
         helper.assertTrue(player.isAlive(), "a single totem must save the player before D30");
         helper.assertTrue(player.getMainHandItem().isEmpty(), "the totem must be consumed");
-        helper.succeed();
+        finish(helper, player);
     }
 
     @GameTest(template = EMPTY, batch = "d40")
     public static void oneTotemIsNotEnoughOnD40(GameTestHelper helper) {
-        ServerPlayer player = helper.makeMockServerPlayerInLevel();
-        player.setGameMode(GameType.SURVIVAL);
+        ServerPlayer player = mockPlayer(helper);
         player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.TOTEM_OF_UNDYING));
         DamageSource source = helper.getLevel().damageSources().generic();
         player.hurt(source, 1000.0F);
         helper.assertTrue(player.isDeadOrDying(), "D40 requires two totems: the player must die");
         helper.assertTrue(player.getMainHandItem().isEmpty(), "the insufficient totem is consumed");
+        // The dead player is banned and disconnected by DeathHandler 80 ticks later.
         helper.succeed();
     }
 
     @GameTest(template = EMPTY, batch = "d0")
     public static void endClosedBeforeD30(GameTestHelper helper) {
-        ServerPlayer player = helper.makeMockServerPlayerInLevel();
+        ServerPlayer player = mockPlayer(helper);
         EntityTravelToDimensionEvent event = new EntityTravelToDimensionEvent(player, Level.END);
         NeoForge.EVENT_BUS.post(event);
         helper.assertTrue(event.isCanceled(), "travel to the End must be cancelled before D30");
-        helper.succeed();
+        finish(helper, player);
     }
 
     @GameTest(template = EMPTY, batch = "d40", timeoutTicks = 60)
     public static void maxHealthPenaltyAndLockedSlotsOnD40(GameTestHelper helper) {
-        ServerPlayer player = helper.makeMockServerPlayerInLevel();
-        player.setGameMode(GameType.SURVIVAL);
-        helper.runAfterDelay(5, () -> {
+        ServerPlayer player = mockPlayer(helper);
+        helper.runAtTickTime(5, () -> {
             helper.assertTrue(Math.abs(player.getMaxHealth() - 12.0F) < 0.01F, "D40 max health should be 12, is " + player.getMaxHealth());
             helper.assertTrue(LockedSlots.isBlocker(player.getInventory().getItem(4)), "slot 4 must be locked on D40");
             helper.assertTrue(helper.getLevel().getServer().isPvpAllowed(), "PvP must be enabled from D40");
-            helper.succeed();
+            finish(helper, player);
         });
     }
 
     @GameTest(template = EMPTY, batch = "d60", timeoutTicks = 60)
     public static void maxHealthPenaltyOnD60(GameTestHelper helper) {
-        ServerPlayer player = helper.makeMockServerPlayerInLevel();
-        player.setGameMode(GameType.SURVIVAL);
-        helper.runAfterDelay(5, () -> {
+        ServerPlayer player = mockPlayer(helper);
+        helper.runAtTickTime(5, () -> {
             helper.assertTrue(Math.abs(player.getMaxHealth() - 4.0F) < 0.01F, "D60 max health should be 4, is " + player.getMaxHealth());
-            helper.succeed();
+            finish(helper, player);
         });
     }
 
     @GameTest(template = EMPTY, batch = "d10")
     public static void pvpDisabledBeforeD40(GameTestHelper helper) {
-        helper.runAfterDelay(2, () -> {
+        helper.runAtTickTime(2, () -> {
             helper.assertTrue(!helper.getLevel().getServer().isPvpAllowed(), "PvP must be disabled before D40");
             helper.succeed();
         });

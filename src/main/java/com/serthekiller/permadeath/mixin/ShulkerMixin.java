@@ -21,7 +21,8 @@ public abstract class ShulkerMixin {
         }
     }
 
-    @Inject(method = "onPeekAmountChange", at = @At("HEAD"), cancellable = true)
+    /** Cosmetic part (pushing while opening): optional, so a renamed target can never prevent the server from starting. */
+    @Inject(method = "onPeekAmountChange", at = @At("HEAD"), cancellable = true, require = 0)
     private void permadeath$noPushWhileRiding(CallbackInfo ci) {
         if (((Shulker) (Object) this).isPassenger()) {
             ci.cancel();

@@ -19,6 +19,18 @@ public final class ModCreativeTabs {
     private ModCreativeTabs() {
     }
 
+    /**
+     * {@code BuildCreativeModeTabContentsEvent#insertAfter} throws when the anchor is not in the tab; like the
+     * Fabric API (which appends in that case) the entry is then added at the end of the tab.
+     */
+    private static void insertAfter(BuildCreativeModeTabContentsEvent event, ItemStack anchor, ItemStack entry, CreativeModeTab.TabVisibility visibility) {
+        if (event.getParentEntries().contains(anchor) && event.getSearchEntries().contains(anchor)) {
+            event.insertAfter(anchor, entry, visibility);
+        } else {
+            event.accept(entry, visibility);
+        }
+    }
+
     public static void onBuildContents(BuildCreativeModeTabContentsEvent event) {
         if (event.getTabKey() == CreativeModeTabs.COMBAT) {
             List<Supplier<? extends ItemLike>> armor = List.of(
@@ -31,7 +43,7 @@ public final class ModCreativeTabs {
             ItemStack previous = new ItemStack(Items.NETHERITE_BOOTS);
             for (Supplier<? extends ItemLike> item : armor) {
                 ItemStack stack = new ItemStack(item.get());
-                event.insertAfter(previous, stack, VISIBILITY);
+                insertAfter(event, previous, stack, VISIBILITY);
                 previous = stack;
             }
             ItemStack totem = new ItemStack(Items.TOTEM_OF_UNDYING);
@@ -40,16 +52,16 @@ public final class ModCreativeTabs {
             ItemStack beginningRelic = new ItemStack(ModItems.BEGINNING_RELIC.get());
             ItemStack elytra = ArmoredElytra.create();
             ItemStack lifeOrb = new ItemStack(ModItems.LIFE_ORB.get());
-            event.insertAfter(totem, endRelic, VISIBILITY);
-            event.insertAfter(endRelic, beginningRelic, VISIBILITY);
-            event.insertAfter(beginningRelic, elytra, VISIBILITY);
-            event.insertAfter(elytra, lifeOrb, VISIBILITY);
-            event.insertAfter(lifeOrb, medal, VISIBILITY);
-            event.insertAfter(new ItemStack(Items.TNT), new ItemStack(ModItems.INFERNAL_NETHERITE_BLOCK.get()), VISIBILITY);
+            insertAfter(event, totem, endRelic, VISIBILITY);
+            insertAfter(event, endRelic, beginningRelic, VISIBILITY);
+            insertAfter(event, beginningRelic, elytra, VISIBILITY);
+            insertAfter(event, elytra, lifeOrb, VISIBILITY);
+            insertAfter(event, lifeOrb, medal, VISIBILITY);
+            insertAfter(event, new ItemStack(Items.TNT), new ItemStack(ModItems.INFERNAL_NETHERITE_BLOCK.get()), VISIBILITY);
         } else if (event.getTabKey() == CreativeModeTabs.FOOD_AND_DRINKS) {
             ItemStack superApple = new ItemStack(ModItems.SUPER_GOLDEN_APPLE_PLUS.get());
-            event.insertAfter(new ItemStack(Items.ENCHANTED_GOLDEN_APPLE), superApple, VISIBILITY);
-            event.insertAfter(superApple, new ItemStack(ModItems.HYPER_GOLDEN_APPLE_PLUS.get()), VISIBILITY);
+            insertAfter(event, new ItemStack(Items.ENCHANTED_GOLDEN_APPLE), superApple, VISIBILITY);
+            insertAfter(event, superApple, new ItemStack(ModItems.HYPER_GOLDEN_APPLE_PLUS.get()), VISIBILITY);
         }
     }
 }
