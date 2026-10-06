@@ -1,0 +1,35 @@
+modLoader="javafml"
+loaderVersion="${loader_version_range}"
+license="${mod_license}"
+
+[[mods]]
+modId="${mod_id}"
+version="${mod_version}"
+displayName="${mod_name}"
+logoFile="assets/permadeath/icon.png"
+authors="${mod_authors}"
+credits="Mod original para Fabric por Serthekiller. Serie Permadeath de ElRichMC. Port nativo a NeoForge 1.21.1."
+description='''${mod_description}
+
+El perfil de calendario (GAME60 o REAL30) está fijado por el jar y se muestra con /permadeath status.
+Requerido en servidor y cliente (registra items, bloques, armaduras, sonido y la dimensión The Beginning).'''
+
+[[mixins]]
+config="${mod_id}.mixins.json"
+
+[[accessTransformers]]
+file="META-INF/accesstransformer.cfg"
+
+[[dependencies.${mod_id}]]
+modId="neoforge"
+type="required"
+versionRange="${neo_version_range}"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.${mod_id}]]
+modId="minecraft"
+type="required"
+versionRange="${minecraft_version_range}"
+ordering="NONE"
+side="BOTH"

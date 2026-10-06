@@ -57,6 +57,12 @@ public final class ProgressionState {
     /** Legacy Fabric .txt/.json state already imported. */
     public boolean legacyMigrated;
 
+    // ---- End arena (one-shot world edits) ------------------------------------------------------
+    /** 35 % of the End island top end stone already turned into end stone bricks. */
+    public boolean endArenaPrepared;
+    /** Packed positions (BlockPos#asLong) of the four End healing altars. */
+    public long[] endAltarPositions = new long[0];
+
     private transient Runnable changeListener = () -> {
     };
 
