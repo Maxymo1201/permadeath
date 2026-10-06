@@ -1,0 +1,14 @@
+{
+  "fallback": "minecraft:empty",
+  "elements": [
+    {
+      "weight": 1,
+      "element": {
+        "element_type": "minecraft:single_pool_element",
+        "location": "permadeath:bajada2",
+        "processors": "permadeath:no_air_replace",
+        "projection": "rigid"
+      }
+    }
+  ]
+}

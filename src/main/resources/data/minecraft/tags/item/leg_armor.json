@@ -1,0 +1,11 @@
+{
+  "replace": false,
+  "values": [
+    "permadeath:netherite_leggings",
+    "permadeath:infernal_netherite_leggings",
+    "permadeath:demonic_netherite_leggings",
+    "permadeath:scientific_netherite_leggings",
+    "permadeath:bomb_netherite_leggings",
+    "permadeath:pink_netherite_leggings"
+  ]
+}

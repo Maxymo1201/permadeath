@@ -1,0 +1,29 @@
+{
+  "replace": false,
+  "values": [
+    "permadeath:netherite_helmet",
+    "permadeath:netherite_chestplate",
+    "permadeath:netherite_leggings",
+    "permadeath:netherite_boots",
+    "permadeath:infernal_netherite_helmet",
+    "permadeath:infernal_netherite_chestplate",
+    "permadeath:infernal_netherite_leggings",
+    "permadeath:infernal_netherite_boots",
+    "permadeath:demonic_netherite_helmet",
+    "permadeath:demonic_netherite_chestplate",
+    "permadeath:demonic_netherite_leggings",
+    "permadeath:demonic_netherite_boots",
+    "permadeath:scientific_netherite_helmet",
+    "permadeath:scientific_netherite_chestplate",
+    "permadeath:scientific_netherite_leggings",
+    "permadeath:scientific_netherite_boots",
+    "permadeath:bomb_netherite_helmet",
+    "permadeath:bomb_netherite_chestplate",
+    "permadeath:bomb_netherite_leggings",
+    "permadeath:bomb_netherite_boots",
+    "permadeath:pink_netherite_helmet",
+    "permadeath:pink_netherite_chestplate",
+    "permadeath:pink_netherite_leggings",
+    "permadeath:pink_netherite_boots"
+  ]
+}

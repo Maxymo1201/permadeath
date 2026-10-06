@@ -1,0 +1,60 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "permadeath:min_day",
+      "min_day": 60
+    }
+  ],
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "AAA",
+    "AEA",
+    "AAA"
+  ],
+  "key": {
+    "E": {
+      "item": "minecraft:elytra"
+    },
+    "A": {
+      "item": "permadeath:infernal_netherite_block"
+    }
+  },
+  "result": {
+    "id": "minecraft:elytra",
+    "count": 1,
+    "components": {
+      "minecraft:attribute_modifiers": {
+        "modifiers": [
+          {
+            "type": "minecraft:generic.armor",
+            "id": "permadeath:armored_elytra_armor",
+            "amount": 8,
+            "operation": "add_value",
+            "slot": "chest"
+          },
+          {
+            "type": "minecraft:generic.armor_toughness",
+            "id": "permadeath:armored_elytra_toughness",
+            "amount": 3,
+            "operation": "add_value",
+            "slot": "chest"
+          },
+          {
+            "type": "minecraft:generic.knockback_resistance",
+            "id": "permadeath:armored_elytra_kb",
+            "amount": 0.1,
+            "operation": "add_value",
+            "slot": "chest"
+          }
+        ],
+        "show_in_tooltip": true
+      },
+      "minecraft:custom_data": {
+        "permadeath": {
+          "armored_elytra": true
+        }
+      },
+      "minecraft:custom_name": "{\"text\":\"Elytra de Netherite Infernal\",\"color\":\"gold\",\"italic\":false}"
+    }
+  }
+}

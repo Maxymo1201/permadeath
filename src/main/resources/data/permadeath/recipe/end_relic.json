@@ -1,0 +1,26 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "permadeath:min_day",
+      "min_day": 40
+    }
+  ],
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "S",
+    "D",
+    "S"
+  ],
+  "key": {
+    "S": {
+      "item": "minecraft:shulker_shell"
+    },
+    "D": {
+      "item": "minecraft:diamond_block"
+    }
+  },
+  "result": {
+    "id": "permadeath:end_relic",
+    "count": 1
+  }
+}

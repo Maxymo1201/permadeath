@@ -1,0 +1,11 @@
+{
+  "type": "permadeath:the_beginning_type",
+  "generator": {
+    "type": "minecraft:noise",
+    "settings": "permadeath:the_beginning_noise",
+    "biome_source": {
+      "type": "minecraft:fixed",
+      "biome": "permadeath:the_beginning_biome"
+    }
+  }
+}

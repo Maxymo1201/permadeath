@@ -25,7 +25,7 @@ public final class Permadeath {
     @Nullable
     private static PermadeathData data;
     @Nullable
-    private static ProgressionClock clock;
+    private static volatile ProgressionClock clock;
     /** Time source of REAL30 (replaceable by GameTests / debug only). */
     private static Clock wallClock = Clock.systemUTC();
 

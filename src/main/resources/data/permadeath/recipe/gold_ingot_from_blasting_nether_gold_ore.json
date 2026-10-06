@@ -1,0 +1,18 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "permadeath:min_day",
+      "min_day": 50
+    }
+  ],
+  "type": "minecraft:blasting",
+  "ingredient": {
+    "item": "minecraft:nether_gold_ore"
+  },
+  "result": {
+    "id": "minecraft:gold_nugget",
+    "count": 1
+  },
+  "experience": 1.0,
+  "cookingtime": 100
+}

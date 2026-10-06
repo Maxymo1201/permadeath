@@ -1,0 +1,9 @@
+{
+  "replace": false,
+  "values": [
+    "permadeath:netherite_helmet",
+    "permadeath:netherite_chestplate",
+    "permadeath:netherite_leggings",
+    "permadeath:netherite_boots"
+  ]
+}

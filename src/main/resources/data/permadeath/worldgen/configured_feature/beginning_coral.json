@@ -1,0 +1,13 @@
+{
+  "type": "permadeath:beginning_coral",
+  "config": {
+    "structures": [
+      "permadeath:coral_1",
+      "permadeath:coral_2",
+      "permadeath:coral_3",
+      "permadeath:coral_4",
+      "permadeath:coral_5",
+      "permadeath:coral_6"
+    ]
+  }
+}

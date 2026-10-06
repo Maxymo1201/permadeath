@@ -1,6 +1,7 @@
 package com.serthekiller.permadeath.mobs;
 
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.animal.IronGolem;
 import net.minecraft.world.entity.monster.Ghast;
@@ -32,7 +33,7 @@ public final class GoalRestorer {
         }
     }
 
-    private static boolean hasAny(net.minecraft.world.entity.Mob mob, SkeletonClasses.Tier... tiers) {
+    private static boolean hasAny(Mob mob, SkeletonClasses.Tier... tiers) {
         for (SkeletonClasses.Tier tier : tiers) {
             if (MobTracking.isProcessed(mob, tier.insertKey())) {
                 return true;

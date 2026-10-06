@@ -1,0 +1,16 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.serthekiller.permadeath.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ChunkGeneratorMixin",
+    "EndGatewayBlockMixin",
+    "MobMixin",
+    "ShulkerMixin"
+  ],
+  "client": [],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

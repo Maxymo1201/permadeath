@@ -3,6 +3,7 @@ package com.serthekiller.permadeath.mobs;
 import com.serthekiller.permadeath.registry.ModItems;
 import com.serthekiller.permadeath.util.MobUtil;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
@@ -195,7 +196,7 @@ public final class SkeletonClasses {
         skeleton.setItemSlot(EquipmentSlot.MAINHAND, bow);
         skeleton.setItemSlot(EquipmentSlot.OFFHAND, MobUtil.harmingArrow(1, MobUtil.HARMING_COLOR));
         MobUtil.setMaxHealth(skeleton, tier == Tier.D50 || tier == Tier.D60 ? 100.0 : 40.0);
-        skeleton.setCustomName(net.minecraft.network.chat.Component.literal(name("Guerrero", tier)));
+        skeleton.setCustomName(Component.literal(name("Guerrero", tier)));
         mount(skeleton, level, vehicle, fresh);
     }
 
@@ -221,7 +222,7 @@ public final class SkeletonClasses {
         armor(wither, Items.CHAINMAIL_HELMET, Items.CHAINMAIL_CHESTPLATE, Items.CHAINMAIL_LEGGINGS, Items.CHAINMAIL_BOOTS);
         wither.setItemSlot(EquipmentSlot.OFFHAND, MobUtil.harmingArrow(1, MobUtil.HARMING_COLOR));
         MobUtil.setMaxHealth(wither, tier == Tier.D60 ? 60.0 : 40.0);
-        wither.setCustomName(net.minecraft.network.chat.Component.literal(name("Táctico", tier)));
+        wither.setCustomName(Component.literal(name("Táctico", tier)));
         spawnReplacement(wither, skeleton, level, vehicle, tier != Tier.D30);
     }
 
@@ -235,7 +236,7 @@ public final class SkeletonClasses {
         armor(skeleton, Items.IRON_HELMET, Items.IRON_CHESTPLATE, Items.IRON_LEGGINGS, Items.IRON_BOOTS);
         skeleton.setItemSlot(EquipmentSlot.OFFHAND, MobUtil.harmingArrow(1, MobUtil.HARMING_COLOR));
         MobUtil.setMaxHealth(skeleton, tier == Tier.D60 ? 100.0 : 40.0);
-        skeleton.setCustomName(net.minecraft.network.chat.Component.literal(name("Infernal", tier)));
+        skeleton.setCustomName(Component.literal(name("Infernal", tier)));
         mount(skeleton, level, vehicle, fresh);
     }
 
@@ -250,7 +251,7 @@ public final class SkeletonClasses {
         skeleton.setItemSlot(EquipmentSlot.OFFHAND, MobUtil.harmingArrow(1, MobUtil.HARMING_COLOR));
         skeleton.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, MobUtil.INFINITE, tier == Tier.D60 ? 3 : 1, false, true));
         MobUtil.setMaxHealth(skeleton, tier == Tier.D60 ? 60.0 : 40.0);
-        skeleton.setCustomName(net.minecraft.network.chat.Component.literal(name("Asesino", tier)));
+        skeleton.setCustomName(Component.literal(name("Asesino", tier)));
         mount(skeleton, level, vehicle, fresh);
     }
 
@@ -265,7 +266,7 @@ public final class SkeletonClasses {
         leatherArmor(wither);
         wither.setItemSlot(EquipmentSlot.OFFHAND, MobUtil.harmingArrow(1, MobUtil.HARMING_COLOR));
         MobUtil.setMaxHealth(wither, 40.0);
-        wither.setCustomName(net.minecraft.network.chat.Component.literal(name("Pesadilla", tier)));
+        wither.setCustomName(Component.literal(name("Pesadilla", tier)));
         spawnReplacement(wither, skeleton, level, vehicle, tier != Tier.D30);
     }
 
@@ -280,7 +281,7 @@ public final class SkeletonClasses {
                 new MobEffectInstance(MobEffects.POISON, 360, 2))));
         skeleton.setItemSlot(EquipmentSlot.OFFHAND, arrow);
         MobUtil.setMaxHealth(skeleton, 100.0);
-        skeleton.setCustomName(net.minecraft.network.chat.Component.literal("§6Ultra Esqueleto Científico"));
+        skeleton.setCustomName(Component.literal("§6Ultra Esqueleto Científico"));
         mount(skeleton, level, vehicle, fresh);
     }
 
@@ -289,7 +290,7 @@ public final class SkeletonClasses {
         skeleton.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.BOW));
         skeleton.setItemSlot(EquipmentSlot.OFFHAND, MobUtil.harmingArrow(1, DEMONIC_ARROW_COLOR));
         skeleton.addTag(DEMONIC_SKELETON_TAG);
-        skeleton.setCustomName(net.minecraft.network.chat.Component.literal("§6Ultra Esqueleto Demoníaco"));
+        skeleton.setCustomName(Component.literal("§6Ultra Esqueleto Demoníaco"));
         MobUtil.setMaxHealth(skeleton, 100.0);
         mount(skeleton, level, vehicle, fresh);
     }
@@ -299,7 +300,7 @@ public final class SkeletonClasses {
         // Power 32765 in the jar; enchantment levels are capped at 255 by ItemEnchantments (same as Fabric).
         wither.setItemSlot(EquipmentSlot.MAINHAND, MobUtil.enchanted(level, new ItemStack(Items.BOW), ench(Enchantments.POWER, 32765)));
         MobUtil.setMaxHealth(wither, 400.0);
-        wither.setCustomName(net.minecraft.network.chat.Component.literal("§6Ultra Esqueleto Definitivo"));
+        wither.setCustomName(Component.literal("§6Ultra Esqueleto Definitivo"));
         spawnReplacement(wither, skeleton, level, vehicle, true);
     }
 

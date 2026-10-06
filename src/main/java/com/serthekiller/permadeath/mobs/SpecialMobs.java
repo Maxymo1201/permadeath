@@ -1,6 +1,7 @@
 package com.serthekiller.permadeath.mobs;
 
 import com.serthekiller.permadeath.PermadeathMod;
+import com.serthekiller.permadeath.beginning.BeginningDimension;
 import com.serthekiller.permadeath.progression.Permadeath;
 import com.serthekiller.permadeath.registry.ModBlocks;
 import com.serthekiller.permadeath.registry.ModItems;
@@ -16,9 +17,12 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.BiomeTags;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
@@ -33,6 +37,7 @@ import net.minecraft.world.entity.monster.Drowned;
 import net.minecraft.world.entity.monster.Ghast;
 import net.minecraft.world.entity.monster.Giant;
 import net.minecraft.world.entity.monster.MagmaCube;
+import net.minecraft.world.entity.monster.Ravager;
 import net.minecraft.world.entity.monster.Shulker;
 import net.minecraft.world.entity.monster.Slime;
 import net.minecraft.world.entity.monster.WitherSkeleton;
@@ -49,8 +54,6 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.block.entity.BannerPatternLayers;
 import net.minecraft.world.phys.AABB;
-import net.minecraft.world.effect.MobEffectInstance;
-import net.minecraft.world.effect.MobEffects;
 import net.neoforged.neoforge.event.EventHooks;
 
 import java.util.Optional;
@@ -77,7 +80,7 @@ public final class SpecialMobs {
     // ------------------------------------------------------------------------------------------- Ultra Ravager
 
     /** Ultra Ravager (500 HP) ridden by "Carlos el Esclavo" ridden by "Jess la Emperatriz" (Fabric Ravagercreator). */
-    public static void setupUltraRavagerStack(net.minecraft.world.entity.monster.Ravager ravager, ServerLevel level) {
+    public static void setupUltraRavagerStack(Ravager ravager, ServerLevel level) {
         ravager.addTag(PROCESSED_STACK);
         ravager.addTag(ULTRA_RAVAGER);
         MobUtil.setMaxHealth(ravager, 500.0);
@@ -117,7 +120,7 @@ public final class SpecialMobs {
 
     /** Drops of the stack (Fabric handleemperatrisdrop): totem, 32 gold ingots, 2 golden apples. */
     public static void handleStackDrops(LivingEntity entity, ServerLevel level) {
-        if (entity instanceof net.minecraft.world.entity.monster.Ravager && entity.getTags().contains(ULTRA_RAVAGER)) {
+        if (entity instanceof Ravager && entity.getTags().contains(ULTRA_RAVAGER)) {
             drop(level, entity, new ItemStack(Items.TOTEM_OF_UNDYING));
         } else if (entity instanceof ZombifiedPiglin && entity.getTags().contains(CARLOS_PIGMAN)) {
             drop(level, entity, new ItemStack(Items.GOLD_INGOT, 32));
@@ -167,7 +170,7 @@ public final class SpecialMobs {
         if (!level.getBiome(pos).is(Biomes.PLAINS) || !level.canSeeSky(pos)) {
             return false;
         }
-        if (!(entity instanceof net.minecraft.world.entity.Mob mob) || !MobTracking.tryClaim(mob, "giant_roll")) {
+        if (!(entity instanceof Mob mob) || !MobTracking.tryClaim(mob, "giant_roll")) {
             return false;
         }
         float chance = Permadeath.day() >= 60 ? 0.2F : 0.05F;
@@ -422,7 +425,7 @@ public final class SpecialMobs {
             }
         }
         if (entity instanceof Ghast ghast && level.dimension() != Level.END
-                && level.dimension() != com.serthekiller.permadeath.beginning.BeginningDimension.LEVEL_KEY) {
+                && level.dimension() != BeginningDimension.LEVEL_KEY) {
             if (day < 40) {
                 if (!ghast.hasCustomName() || !MobUtil.nameContains(ghast, "Demoníaco") && !MobUtil.nameContains(ghast, "Ender")) {
                     MobUtil.setMaxHealth(ghast, 40 + level.random.nextInt(21));

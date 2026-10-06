@@ -1,0 +1,10 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "permadeath:min_day",
+      "min_day": 60
+    }
+  ],
+  "type": "permadeath:life_orb",
+  "category": "misc"
+}

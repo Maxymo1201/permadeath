@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:jigsaw",
+  "biomes": "permadeath:the_beginning_biome",
+  "step": "surface_structures",
+  "spawn_overrides": {},
+  "start_pool": "permadeath:mini_islands_pool",
+  "size": 1,
+  "max_distance_from_center": 16,
+  "use_expansion_hack": false,
+  "terrain_adaptation": "none",
+  "start_height": {
+    "type": "minecraft:uniform",
+    "min_inclusive": {
+      "absolute": 240
+    },
+    "max_inclusive": {
+      "absolute": 250
+    }
+  }
+}

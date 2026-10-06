@@ -1,0 +1,15 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:false"
+    }
+  ],
+  "type": "minecraft:smithing_transform",
+  "template": "minecraft:air",
+  "base": "minecraft:air",
+  "addition": "minecraft:air",
+  "result": {
+    "count": 1,
+    "id": "minecraft:air"
+  }
+}

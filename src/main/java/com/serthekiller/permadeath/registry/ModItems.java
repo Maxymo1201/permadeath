@@ -12,6 +12,7 @@ import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.ArmorMaterial;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Rarity;
 import net.minecraft.world.item.component.Unbreakable;
 import net.neoforged.neoforge.registries.DeferredItem;
@@ -85,7 +86,7 @@ public final class ModItems {
             return List.of(helmet, chestplate, leggings, boots);
         }
 
-        public boolean contains(net.minecraft.world.item.ItemStack stack) {
+        public boolean contains(ItemStack stack) {
             return stack.is(helmet.get()) || stack.is(chestplate.get()) || stack.is(leggings.get()) || stack.is(boots.get());
         }
     }

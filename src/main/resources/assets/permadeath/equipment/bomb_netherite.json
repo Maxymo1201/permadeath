@@ -1,0 +1,14 @@
+{
+  "layers": {
+    "humanoid": [
+      {
+        "texture": "permadeath:bomb"
+      }
+    ],
+    "humanoid_leggings": [
+      {
+        "texture": "permadeath:bomb"
+      }
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "structures": [
+    {
+      "structure": "permadeath:ytic_base",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "type": "minecraft:random_spread",
+    "spacing": 24,
+    "separation": 10,
+    "salt": 192837,
+    "frequency": 1.0,
+    "frequency_reduction_method": "legacy_type_1"
+  }
+}

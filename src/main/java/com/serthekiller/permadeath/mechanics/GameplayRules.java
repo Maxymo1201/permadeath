@@ -2,6 +2,7 @@ package com.serthekiller.permadeath.mechanics;
 
 import com.serthekiller.permadeath.beginning.BeginningDimension;
 import com.serthekiller.permadeath.data.SurvivalAchievementData;
+import com.serthekiller.permadeath.mobs.EnderMobs;
 import com.serthekiller.permadeath.mobs.SpecialMobs;
 import com.serthekiller.permadeath.progression.Permadeath;
 import com.serthekiller.permadeath.util.MobUtil;
@@ -23,9 +24,11 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LightningBolt;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.goal.WrappedGoal;
 import net.minecraft.world.entity.animal.Bee;
 import net.minecraft.world.entity.boss.wither.WitherBoss;
 import net.minecraft.world.entity.decoration.ItemFrame;
+import net.minecraft.world.entity.item.FallingBlockEntity;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.item.PrimedTnt;
 import net.minecraft.world.entity.monster.CaveSpider;
@@ -42,12 +45,12 @@ import net.minecraft.world.entity.projectile.ShulkerBullet;
 import net.minecraft.world.entity.projectile.ThrownEnderpearl;
 import net.minecraft.world.entity.projectile.WitherSkull;
 import net.minecraft.world.entity.vehicle.AbstractMinecart;
-import net.minecraft.world.entity.ai.goal.WrappedGoal;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biomes;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
@@ -230,11 +233,11 @@ public final class GameplayRules {
                     if (state.isAir() || state.getDestroySpeed(level, pos) < 0.0F) {
                         continue;
                     }
-                    var falling = net.minecraft.world.entity.item.FallingBlockEntity.fall(level, pos, state);
+                    var falling = FallingBlockEntity.fall(level, pos, state);
                     falling.setDeltaMovement(x * 0.04 + (level.random.nextDouble() - 0.5) * 0.15, 0.6 + level.random.nextDouble() * 0.8,
                             z * 0.04 + (level.random.nextDouble() - 0.5) * 0.15);
                     falling.dropItem = false;
-                    level.setBlock(pos, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
+                    level.setBlock(pos, Blocks.AIR.defaultBlockState(), 3);
                 }
             }
         }
@@ -547,7 +550,7 @@ public final class GameplayRules {
             return;
         }
         int d = day();
-        if (d < 30 || d >= 40 || !com.serthekiller.permadeath.mobs.EnderMobs.isDragonAlive(level)) {
+        if (d < 30 || d >= 40 || !EnderMobs.isDragonAlive(level)) {
             return;
         }
         boolean hasNightVision = player.hasEffect(MobEffects.NIGHT_VISION);

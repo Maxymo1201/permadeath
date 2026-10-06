@@ -1,0 +1,23 @@
+{
+  "layers": {
+    "humanoid": [
+      {
+        "texture": "permadeath:netherite",
+        "dyeable": false,
+        "use_player_texture": false
+      }
+    ],
+    "humanoid_leggings": [
+      {
+        "texture": "permadeath:netherite",
+        "dyeable": false,
+        "use_player_texture": false
+      }
+    ]
+  },
+  "model": {
+    "layers": [
+      "minecraft:main"
+    ]
+  }
+}

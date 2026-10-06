@@ -9,6 +9,7 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.decoration.ItemFrame;
 import net.minecraft.world.entity.projectile.ThrownPotion;
 import net.minecraft.world.item.ItemStack;
@@ -154,7 +155,7 @@ public final class EndArena {
     }
 
     private static void throwPotion(ServerLevel end, BlockPos pos) {
-        ThrownPotion potion = new ThrownPotion(net.minecraft.world.entity.EntityType.POTION, end);
+        ThrownPotion potion = new ThrownPotion(EntityType.POTION, end);
         ItemStack stack = new ItemStack(Items.SPLASH_POTION);
         stack.set(DataComponents.POTION_CONTENTS, new PotionContents(Optional.empty(), Optional.of(16711680), List.of(
                 new MobEffectInstance(MobEffects.MOVEMENT_SPEED, 400, 2),

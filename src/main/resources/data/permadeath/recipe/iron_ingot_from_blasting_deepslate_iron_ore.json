@@ -1,0 +1,18 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "permadeath:min_day",
+      "min_day": 50
+    }
+  ],
+  "type": "minecraft:blasting",
+  "ingredient": {
+    "item": "minecraft:deepslate_iron_ore"
+  },
+  "result": {
+    "id": "minecraft:iron_nugget",
+    "count": 1
+  },
+  "experience": 0.7,
+  "cookingtime": 100
+}

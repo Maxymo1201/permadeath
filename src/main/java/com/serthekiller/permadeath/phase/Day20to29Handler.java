@@ -6,6 +6,7 @@ import com.serthekiller.permadeath.mobs.SkeletonClasses;
 import com.serthekiller.permadeath.mobs.SpecialMobs;
 import com.serthekiller.permadeath.progression.Permadeath;
 import com.serthekiller.permadeath.registry.ModItems;
+import com.serthekiller.permadeath.util.MobUtil;
 import com.serthekiller.permadeath.util.Texts;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
@@ -108,9 +109,9 @@ public final class Day20to29Handler implements PhaseHandler {
                 || entity instanceof WitherSkeleton || entity instanceof Skeleton || entity instanceof Evoker
                 || entity instanceof Phantom || entity instanceof Drowned || entity instanceof Blaze
                 || entity instanceof Piglin
-                || com.serthekiller.permadeath.util.MobUtil.nameContains(entity, "GIGA Slime")
-                || com.serthekiller.permadeath.util.MobUtil.nameContains(entity, "GIGA MagmaCube")
-                || com.serthekiller.permadeath.util.MobUtil.nameContains(entity, "Demoníaco");
+                || MobUtil.nameContains(entity, "GIGA Slime")
+                || MobUtil.nameContains(entity, "GIGA MagmaCube")
+                || MobUtil.nameContains(entity, "Demoníaco");
     }
 
     private static boolean isPermadeathNetherite(ItemEntity item) {

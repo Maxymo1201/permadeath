@@ -10,6 +10,7 @@ import com.serthekiller.permadeath.mobs.SpecialMobs;
 import com.serthekiller.permadeath.progression.Permadeath;
 import com.serthekiller.permadeath.util.MobUtil;
 import com.serthekiller.permadeath.util.Texts;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
@@ -19,6 +20,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.animal.IronGolem;
 import net.minecraft.world.entity.monster.CaveSpider;
 import net.minecraft.world.entity.monster.Creeper;
@@ -139,7 +141,7 @@ public final class Day30to39Handler implements PhaseHandler {
             Creeper creeper = new Creeper(EntityType.CREEPER, level);
             creeper.setPos(enderman.getX(), enderman.getY(), enderman.getZ());
             level.addFreshEntity(creeper);
-            creeper.setCustomName(net.minecraft.network.chat.Component.literal(EnderMobs.ENDER_CREEPER_NAME));
+            creeper.setCustomName(Component.literal(EnderMobs.ENDER_CREEPER_NAME));
             enderman.discard();
             return true;
         }
@@ -167,7 +169,7 @@ public final class Day30to39Handler implements PhaseHandler {
         } else if (entity instanceof Silverfish silverfish) {
             if (MobTracking.tryClaim(silverfish, "spider_effects")) {
                 RandomEffects.apply(silverfish, day, 5, level.random);
-                silverfish.setCustomName(net.minecraft.network.chat.Component.literal("§6Silverfish de la Muerte"));
+                silverfish.setCustomName(Component.literal("§6Silverfish de la Muerte"));
             }
         } else if (entity instanceof Endermite endermite && MobTracking.tryClaim(endermite, "spider_effects")) {
             RandomEffects.apply(endermite, day, 5, level.random);
@@ -184,7 +186,7 @@ public final class Day30to39Handler implements PhaseHandler {
             MobGoals.ensureMachineGun(pillager);
             return;
         }
-        if (!(entity instanceof net.minecraft.world.entity.Mob mob) || !MobTracking.tryClaim(mob, "insert_effect_d30_39")) {
+        if (!(entity instanceof Mob mob) || !MobTracking.tryClaim(mob, "insert_effect_d30_39")) {
             return;
         }
         if (entity instanceof IronGolem golem) {

@@ -1,0 +1,14 @@
+{
+  "layers": {
+    "humanoid": [
+      {
+        "texture": "permadeath:netherite"
+      }
+    ],
+    "humanoid_leggings": [
+      {
+        "texture": "permadeath:netherite"
+      }
+    ]
+  }
+}

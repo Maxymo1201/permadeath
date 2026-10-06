@@ -1,0 +1,10 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "permadeath:min_day",
+      "min_day": 40
+    }
+  ],
+  "type": "permadeath:hyper_apple",
+  "category": "misc"
+}

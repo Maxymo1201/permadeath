@@ -1,0 +1,25 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "permadeath:min_day",
+      "min_day": 40
+    }
+  ],
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "C",
+    "B"
+  ],
+  "key": {
+    "C": {
+      "item": "minecraft:chorus_fruit"
+    },
+    "B": {
+      "item": "minecraft:glass_bottle"
+    }
+  },
+  "result": {
+    "id": "minecraft:dragon_breath",
+    "count": 1
+  }
+}

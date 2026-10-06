@@ -2,6 +2,8 @@ package com.serthekiller.permadeath.beginning;
 
 import com.serthekiller.permadeath.PermadeathMod;
 import com.serthekiller.permadeath.data.PortalState;
+import com.serthekiller.permadeath.mechanics.DeathTrain;
+import com.serthekiller.permadeath.progression.Permadeath;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.resources.ResourceKey;
@@ -9,6 +11,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.Mirror;
@@ -131,6 +134,59 @@ public final class BeginningPortal {
         }
         BlockPos spawn = overworld.getSharedSpawnPos();
         return new Vec3(spawn.getX() + 0.5, spawn.getY(), spawn.getZ() + 0.5);
+    }
+
+    // ------------------------------------------------------------------------------------------------ gateways
+
+    /** Result of {@link #gatewayOverride}: {@code overridden == false} keeps the vanilla destination. */
+    public record GatewayOverride(boolean overridden, @Nullable DimensionTransition transition) {
+        public static final GatewayOverride VANILLA = new GatewayOverride(false, null);
+        public static final GatewayOverride NO_TELEPORT = new GatewayOverride(true, null);
+    }
+
+    /**
+     * Destination of an End gateway used by a player (Fabric EndGatewayMixin):
+     * <ul>
+     *     <li>D40-49, Overworld: the player is sent to y = -100 (the void) and the gateway does nothing else -
+     *     The Beginning opens on D50 (PermaDeathCore killed the player with "entró a TheBeginning antes de tiempo").</li>
+     *     <li>D50+, Overworld: to the arrival platform of The Beginning, or to the player's spawn while a Death
+     *     Train storm is active.</li>
+     *     <li>D50+, The Beginning: back to the player's spawn in the Overworld.</li>
+     * </ul>
+     */
+    public static GatewayOverride gatewayOverride(ServerLevel level, Entity entity) {
+        if (!(entity instanceof ServerPlayer player) || !Permadeath.isRunning()) {
+            return GatewayOverride.VANILLA;
+        }
+        int day = Permadeath.day();
+        MinecraftServer server = level.getServer();
+        if (level.dimension() == Level.OVERWORLD && day >= 40 && day < 50) {
+            if (!player.isSpectator()) {
+                player.teleportTo(player.getX(), -100.0, player.getZ());
+                return GatewayOverride.NO_TELEPORT;
+            }
+            return GatewayOverride.VANILLA;
+        }
+        if (level.dimension() == Level.OVERWORLD && day >= 50) {
+            ServerLevel beginning = BeginningDimension.level(server);
+            if (beginning == null) {
+                return GatewayOverride.VANILLA;
+            }
+            if (!DeathTrain.isActive()) {
+                Vec3 target = ensurePortalAndGetSpawn(beginning);
+                return new GatewayOverride(true, new DimensionTransition(beginning, target, player.getDeltaMovement(),
+                        player.getYRot(), player.getXRot() + 1.0F, DimensionTransition.PLACE_PORTAL_TICKET));
+            }
+            ServerLevel overworld = server.overworld();
+            return new GatewayOverride(true, new DimensionTransition(overworld, getPlayerSpawnInOverworld(player, overworld), Vec3.ZERO,
+                    player.getYRot(), player.getXRot(), DimensionTransition.PLACE_PORTAL_TICKET));
+        }
+        if (level.dimension() == BeginningDimension.LEVEL_KEY && day >= 50) {
+            ServerLevel overworld = server.overworld();
+            return new GatewayOverride(true, new DimensionTransition(overworld, getPlayerSpawnInOverworld(player, overworld), Vec3.ZERO,
+                    player.getYRot(), player.getXRot(), DimensionTransition.PLACE_PORTAL_TICKET));
+        }
+        return GatewayOverride.VANILLA;
     }
 
     /** Teleport used by the portals and the storm expulsion (Fabric TeleportTarget + ADD_PORTAL_CHUNK_TICKET). */

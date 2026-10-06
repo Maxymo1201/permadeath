@@ -1,6 +1,7 @@
 package com.serthekiller.permadeath.phase;
 
 import com.serthekiller.permadeath.mechanics.MushroomSpawn;
+import com.serthekiller.permadeath.mobs.BeginningMobs;
 import com.serthekiller.permadeath.mobs.EnderMobs;
 import com.serthekiller.permadeath.mobs.MobGoals;
 import com.serthekiller.permadeath.mobs.MobTracking;
@@ -34,6 +35,7 @@ import net.minecraft.world.entity.monster.Phantom;
 import net.minecraft.world.entity.monster.Pillager;
 import net.minecraft.world.entity.monster.Ravager;
 import net.minecraft.world.entity.monster.Shulker;
+import net.minecraft.world.entity.monster.Skeleton;
 import net.minecraft.world.entity.monster.Slime;
 import net.minecraft.world.entity.monster.Vex;
 import net.minecraft.world.entity.monster.Vindicator;
@@ -50,8 +52,8 @@ import net.minecraft.world.item.SwordItem;
 import net.minecraft.world.item.TridentItem;
 import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
@@ -249,7 +251,7 @@ public final class Day60Handler extends LatePhaseHandler {
         if (arrow.getTags().contains(DEMONIC_ARROW_TAG)) {
             return true;
         }
-        if (arrow.getOwner() instanceof net.minecraft.world.entity.monster.Skeleton skeleton
+        if (arrow.getOwner() instanceof Skeleton skeleton
                 && skeleton.getTags().contains(SkeletonClasses.DEMONIC_SKELETON_TAG)) {
             arrow.addTag(DEMONIC_ARROW_TAG);
             return true;
@@ -295,7 +297,7 @@ public final class Day60Handler extends LatePhaseHandler {
     @Override
     protected void levelTick(ServerLevel level) {
         if (level.getGameTime() % 20L == 0L) {
-            com.serthekiller.permadeath.mobs.BeginningMobs.cleanupHoneyHeads(level);
+            BeginningMobs.cleanupHoneyHeads(level);
         }
     }
 

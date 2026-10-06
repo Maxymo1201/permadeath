@@ -1,0 +1,11 @@
+{
+  "replace": false,
+  "values": [
+    "permadeath:netherite_helmet",
+    "permadeath:infernal_netherite_helmet",
+    "permadeath:demonic_netherite_helmet",
+    "permadeath:scientific_netherite_helmet",
+    "permadeath:bomb_netherite_helmet",
+    "permadeath:pink_netherite_helmet"
+  ]
+}

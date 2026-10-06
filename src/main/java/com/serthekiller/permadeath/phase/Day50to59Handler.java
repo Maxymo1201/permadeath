@@ -18,6 +18,7 @@ import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -26,9 +27,9 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.animal.Cat;
 import net.minecraft.world.entity.animal.IronGolem;
 import net.minecraft.world.entity.animal.Pufferfish;
-import net.minecraft.world.entity.animal.Cat;
 import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Drowned;
@@ -52,6 +53,7 @@ import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.entity.monster.ZombifiedPiglin;
 import net.minecraft.world.entity.monster.piglin.Piglin;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.enchantment.Enchantments;
@@ -253,12 +255,12 @@ public final class Day50to59Handler extends LatePhaseHandler {
             return true;
         }
         if (EnderMobs.isDefinitiveGhast(entity)) {
-            if (source.getDirectEntity() instanceof net.minecraft.world.entity.projectile.Projectile) {
+            if (source.getDirectEntity() instanceof Projectile) {
                 if (entity.getRandom().nextFloat() < 0.3F) {
                     EnderMobs.dodgeWithTeleport(entity);
                     return true;
                 }
-            } else if (source.is(net.minecraft.tags.DamageTypeTags.IS_EXPLOSION)) {
+            } else if (source.is(DamageTypeTags.IS_EXPLOSION)) {
                 EnderMobs.dodgeWithTeleport(entity);
                 return true;
             }

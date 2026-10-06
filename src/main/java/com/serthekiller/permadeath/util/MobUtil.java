@@ -9,6 +9,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
@@ -123,7 +124,7 @@ public final class MobUtil {
         return entity.hasCustomName() && entity.getCustomName() != null && entity.getCustomName().getString().contains(text);
     }
 
-    public static boolean spawn(ServerLevel level, net.minecraft.world.entity.Entity entity) {
+    public static boolean spawn(ServerLevel level, Entity entity) {
         return level.addFreshEntity(entity);
     }
 }

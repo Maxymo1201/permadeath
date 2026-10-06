@@ -1,5 +1,6 @@
 package com.serthekiller.permadeath.phase;
 
+import com.serthekiller.permadeath.beginning.BeginningDimension;
 import com.serthekiller.permadeath.mobs.HostileMobConverter;
 import com.serthekiller.permadeath.mobs.MobTracking;
 import com.serthekiller.permadeath.mobs.SpecialMobs;
@@ -170,7 +171,7 @@ public final class PhaseCommon {
     public static void bedrockLevitation(ServerPlayer player, boolean includeBeginning) {
         ServerLevel level = player.serverLevel();
         boolean dimension = level.dimension() == Level.END
-                || includeBeginning && level.dimension() == com.serthekiller.permadeath.beginning.BeginningDimension.LEVEL_KEY;
+                || includeBeginning && level.dimension() == BeginningDimension.LEVEL_KEY;
         if (!dimension || !level.getBlockState(player.getOnPos()).is(Blocks.BEDROCK)) {
             return;
         }
@@ -194,7 +195,7 @@ public final class PhaseCommon {
 
     /** D50+: invisibility does not work in The Beginning. */
     public static void removeInvisibilityInBeginning(ServerPlayer player) {
-        if (player.level().dimension() == com.serthekiller.permadeath.beginning.BeginningDimension.LEVEL_KEY
+        if (player.level().dimension() == BeginningDimension.LEVEL_KEY
                 && player.hasEffect(MobEffects.INVISIBILITY)) {
             player.removeEffect(MobEffects.INVISIBILITY);
         }

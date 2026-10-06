@@ -1,0 +1,31 @@
+{
+  "sources": [
+    {
+      "type": "paletted_permutations",
+      "textures": [
+        "trims/models/armor/coast",
+        "trims/models/armor/dune",
+        "trims/models/armor/wild",
+        "trims/models/armor/sentry",
+        "trims/models/armor/vex",
+        "trims/models/armor/ward",
+        "trims/models/armor/silence",
+        "trims/models/armor/tide",
+        "trims/models/armor/snout",
+        "trims/models/armor/rib",
+        "trims/models/armor/eye",
+        "trims/models/armor/spire",
+        "trims/models/armor/wayfinder",
+        "trims/models/armor/shaper",
+        "trims/models/armor/raiser",
+        "trims/models/armor/host",
+        "trims/models/armor/flow",
+        "trims/models/armor/bolt"
+      ],
+      "palette_key": "trims/color_palettes/trim_palette",
+      "permutations": {
+        "netherite": "trims/color_palettes/netherite"
+      }
+    }
+  ]
+}

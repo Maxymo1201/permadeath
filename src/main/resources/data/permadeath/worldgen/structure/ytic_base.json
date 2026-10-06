@@ -1,0 +1,20 @@
+{
+  "type": "permadeath:uniform_island_jigsaw",
+  "biomes": "permadeath:the_beginning_biome",
+  "step": "surface_structures",
+  "spawn_overrides": {},
+  "start_pool": "permadeath:ytic_base_pool",
+  "size": 7,
+  "max_distance_from_center": 116,
+  "use_expansion_hack": false,
+  "terrain_adaptation": "none",
+  "start_height": {
+    "type": "minecraft:uniform",
+    "min_inclusive": {
+      "absolute": 199
+    },
+    "max_inclusive": {
+      "absolute": 201
+    }
+  }
+}

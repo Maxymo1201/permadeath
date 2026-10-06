@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "permadeath:mini_island",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "type": "minecraft:random_spread",
+    "spacing": 6,
+    "separation": 2,
+    "salt": 847293
+  }
+}

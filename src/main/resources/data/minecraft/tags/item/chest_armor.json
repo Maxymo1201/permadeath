@@ -1,0 +1,11 @@
+{
+  "replace": false,
+  "values": [
+    "permadeath:netherite_chestplate",
+    "permadeath:infernal_netherite_chestplate",
+    "permadeath:demonic_netherite_chestplate",
+    "permadeath:scientific_netherite_chestplate",
+    "permadeath:bomb_netherite_chestplate",
+    "permadeath:pink_netherite_chestplate"
+  ]
+}

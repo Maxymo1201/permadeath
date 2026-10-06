@@ -25,6 +25,7 @@ import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.animal.Pig;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -348,7 +349,7 @@ public abstract class LatePhaseHandler implements PhaseHandler {
                 }
             }
         } else if (entity instanceof Silverfish || entity instanceof Endermite) {
-            if (MobTracking.tryClaim((net.minecraft.world.entity.Mob) entity, "spider_effects")) {
+            if (MobTracking.tryClaim((Mob) entity, "spider_effects")) {
                 RandomEffects.apply(entity, day, 5, level.random);
             }
         } else if (entity instanceof Pig pig && pig.hasCustomName()) {
