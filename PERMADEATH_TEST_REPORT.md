@@ -1,106 +1,137 @@
 # Informe de pruebas
 
-Fecha de ejecución: 2026-10-06. Entorno: contenedor Linux con OpenJDK 21.0.12 y Gradle 8.14.3 (wrapper).
+Fecha de ejecución: 2026-10-06. Entorno: contenedor Linux (x86_64), OpenJDK 21.0.12, Gradle 8.14.3 (wrapper),
+ModDevGradle 2.0.148, **NeoForge 21.1.256** (la última del canal 21.1 en `maven.neoforged.net` ese día),
+Minecraft 1.21.1.
 
 ## Resumen
 
-| Prueba | Estado |
+| Prueba | Resultado |
 |---|---|
-| Tests unitarios del núcleo (`./gradlew coreTest`) | **Ejecutados: 82/82 OK** |
-| Validación de recursos (JSON, condiciones, referencias a Fabric) | **Ejecutada: OK** |
-| Lint estático de imports y de referencias entre clases del proyecto | **Ejecutado: OK** |
-| `./gradlew clean build` (compilación del mod + 2 jars + `verifyProductionJars`) | **No ejecutado: red bloqueada** |
-| GameTests (`runGameTestServer`, 15 tests) | **No ejecutados: necesitan la compilación** |
-| Servidor dedicado: arranque, reinicio y persistencia (`tools/server-smoke-test.sh`) | **No ejecutado: necesita los jars y el instalador de NeoForge** |
-| Inspección de los jars de producción | **No ejecutada: necesita los jars** |
+| `./gradlew clean build`: compilación, AT validados, tests del núcleo, los 2 jars y `verifyProductionJars` | **OK** |
+| Tests unitarios del núcleo (`./gradlew coreTest --rerun`) | **82/82 OK** |
+| GameTests GAME60 (`./gradlew runGameTestServer -PpermadeathMode=GAME60`) | **15/15 OK** |
+| GameTests REAL30 (`./gradlew runGameTestServer -PpermadeathMode=REAL30`) | **15/15 OK** |
+| GameTests con mundos limpios (GAME60 y REAL30, carpeta `run/` borrada antes de cada uno) | **15/15 + 15/15 OK** |
+| Cambio de modo GAME60 → REAL30 sobre el mismo mundo (GameTests REAL30 sobre el mundo de GAME60) | **OK**: conserva el D60 y reancla el calendario |
+| Servidor dedicado con el jar de producción, arranque + reinicio (`tools/server-smoke-test.sh`) | **GAME60 OK, REAL30 OK** |
+| Inspección de los jars de producción | **OK** |
 
-## Bloqueo de red
+## 1. Build
 
-La política de red del entorno rechaza (HTTP 403 del proxy, "connect_rejected") los hosts que
-ModDevGradle necesita para preparar Minecraft y NeoForge: `maven.neoforged.net`, `piston-meta.mojang.com`,
-`piston-data.mojang.com` y `libraries.minecraft.net`. Maven Central, el Gradle Plugin Portal y GitHub sí
-funcionan; por eso el núcleo, que no depende de Minecraft, sí se pudo compilar y probar. No se usaron
-espejos de terceros para no saltarse la política de red.
-
-Salida literal de `./gradlew compileJava`:
+`./gradlew clean build` → `BUILD SUCCESSFUL`:
 
 ```
-> Task :createMinecraftArtifacts FAILED
-Execution failed for task ':createMinecraftArtifacts'.
-> Could not resolve all artifacts for configuration ':neoFormRuntimeExternalTools'.
-   > Could not resolve net.neoforged:neoform-runtime:2.0.31.
-      > Could not GET 'https://maven.neoforged.net/releases/net/neoforged/neoform-runtime/2.0.31/neoform-runtime-2.0.31.pom'.
-        Received status code 403 from server: Forbidden
+[verifyProductionJars] permadeath-GAME60-neoforge-1.21.1.jar: OK (478 entries, profile=GAME60)
+[verifyProductionJars] permadeath-REAL30-neoforge-1.21.1.jar: OK (478 entries, profile=REAL30)
 ```
 
-Con esos cuatro hosts permitidos, la verificación completa se lanza así:
+* `createMinecraftArtifacts` aplica y valida las 7 entradas del access transformer
+  (`validateAccessTransformers = true`). Compilación sin errores ni avisos.
+* Correcciones necesarias en la primera compilación con red:
+  * una llave sobrante en `ExplodingAnimals`;
+  * `Entity#isAddedToWorld` se llama `isAddedToLevel` en NeoForge 21.1.
+
+## 2. Tests unitarios del núcleo
+
+`./gradlew coreTest --rerun` (sin caché) → 82 tests, 0 fallos. Informes JUnit en `build/test-results/coreTest`.
+
+| Clase | Tests | Casos |
+|---|---|---|
+| `GameDayProgressionClockTest` | 13 | Límites D9→D10, D19→D20, D24→D25, D29→D30, D39→D40, D49→D50 y D59→D60; los saltos ejecutan cada hito intermedio una vez; un mundo existente en el día 347 empieza en D0; dormir avanza el calendario; un rollback de `/time` nunca retrocede; `setDay` reancla de forma segura; mover un mundo REAL30 a GAME60 conserva el día |
+| `RealTimeProgressionClockTest` | 24 | T+0 h → D0; 119 h 59 m → D9; 120 h → D10; 239 h 59 m → D19; 240 h → D20; 299 h 59 m → D24; 300 h → D25; 359 h 59 m → D29; 360 h → D30; 479 h 59 m → D39; 480 h → D40; 599 h 59 m → D49; 600 h → D50; 719 h 59 m → D59; 720 h → D60; 721 h y 1000 h → D60. Independiente de los TPS, de la zona horaria y del horario de verano. El tiempo con el servidor apagado cuenta. Un retroceso del reloj del sistema no hace retroceder el día. Instantes de hito exactos. `setDay` coherente y persistente. Mover un mundo GAME60 a REAL30 conserva el día |
+| `LegacyFabricStateTest` | 2 | Lee los ficheros de Fabric (fecha, tormenta, wither, Life Orb, Mikecrack, manzanas) y los aplica en GAME60; en REAL30 conserva el día y lo limita a 60 |
+| `RulesTest` | 43 | Tótems D0/D29/D30/D39/D40/D49/D50/D59/D60 (fallo % y número de tótems), límites de la tirada y prueba de humo con RNG; mobs 70/140; ahogamiento ×1/×5/×10; ceguera D39 = 0, D40-49 = 1/10000, D50-60 = 1/5000; duraciones y buffs del Death Train (coinciden con PermaDeathCore); umbrales de PvP, End, manzanas y vida máxima |
+
+## 3. GameTests (ejecutados en un servidor NeoForge 21.1.256 real)
+
+`gametest/PermadeathGameTests`: 15 tests con la plantilla `permadeath:gametest_empty`. Cada lote fija el día
+en `@BeforeBatch` con `ProgressionClock#setDay`, lo mismo que hace `/permadeath setday`. Los jugadores simulados se
+conectan con una conexión en memoria configurada para la red de NeoForge.
+
+| Lote | Test | Comprueba | GAME60 | REAL30 |
+|---|---|---|---|---|
+| d0 | `hostileMobCapVanillaBeforeD10` | Límite de monstruos 70 | OK | OK |
+| d0 | `drowningVanillaBeforeD50` | Cerdo sumergido: ≥ 280 de aire a los 10 ticks | OK | OK |
+| d0 | `oneTotemSavesBeforeD30` | Un tótem salva y se consume | OK | OK |
+| d0 | `endClosedBeforeD30` | Viaje al End cancelado | OK | OK |
+| d10 | `calendarPhaseFollowsDay` | Día 10 y fase D10-19 | OK | OK |
+| d10 | `hostileMobCapDoubledFromD10` | Límite 140 | OK | OK |
+| d10 | `pvpDisabledBeforeD40` | PvP desactivado | OK | OK |
+| d40 | `torchRecipeRemovedOnD40` | Sin `minecraft:torch`; el hierro de horno sigue | OK | OK |
+| d40 | `chestLootPresentBeforeD60` | El loot de mazmorra no está vacío | OK | OK |
+| d40 | `oneTotemIsNotEnoughOnD40` | Con un tótem el jugador muere y el tótem se consume | OK | OK |
+| d40 | `maxHealthPenaltyAndLockedSlotsOnD40` | 12 de vida máxima, hueco 4 bloqueado, PvP activo | OK | OK |
+| d60 | `calendarNeverGoesBeyondD60` | `setDay(70)` → 60 | OK | OK |
+| d60 | `drowningTenTimesFasterOnD60` | ≤ 230 de aire a los 10 ticks (vanilla ≈ 290) | OK | OK |
+| d60 | `chestLootEmptyOnD60` | El loot de mazmorra está vacío | OK | OK |
+| d60 | `maxHealthPenaltyOnD60` | 4 de vida máxima | OK | OK |
+
+Además de las aserciones, el log de los GameTests confirma en vivo:
+* ejecución idempotente de los hitos D10→D60 al saltar de día;
+* generación del portal a The Beginning en el D40;
+* recarga de datapacks en los umbrales D40/D50/D60, con 3 recetas desactivadas en D40 y 17 en D60;
+* plazo del Life Orb al entrar en D60;
+* muerte del jugador → Death Train de 16 h en D40, mensajes, espectador y baneo.
+
+Ajustes que hizo falta en los propios tests:
+* ids de plantilla sin espacio de nombres, que NeoForge ya añade;
+* golpear al jugador simulado después de sus 60 ticks de protección de aparición.
+
+**Fallo real del mod encontrado y corregido:** `DeathHandler` leía el día al final del tick y no en el
+momento de la muerte. Ahora la duración del Death Train usa el día en que se murió.
+
+## 4. Servidor dedicado con los jars de producción
+
+`tools/server-smoke-test.sh GAME60 REAL30` → `SMOKE OK [GAME60]` y `SMOKE OK [REAL30]`.
+
+* **Servidor usado:** un servidor dedicado NeoForge 21.1.256 (`--launchTarget forgeserverdev`, el mismo
+  NeoForge que instala el instalador). Lo prepara la run `smokeServer` de ModDevGradle y no contiene ninguna
+  clase del mod: el mod se carga solo desde el jar de producción copiado en `mods/` (en el log aparece
+  `Loading Permadeath 2.0.0`, versión del manifiesto del jar).
+* **Primer arranque:**
+  * `Calendar <PERFIL> started: PD day 0`;
+  * `/permadeath status`, `setday 40` (hitos D10-D40, portal, recarga de recetas), `status` → `Día Permadeath: 40/60`;
+  * `debug`; `save-all flush`; `stop`;
+  * la dimensión `permadeath:the_beginning` se carga y se guarda;
+  * ningún error de mixin ni del mod.
+* **Reinicio:** `Calendar <PERFIL> started: PD day 40` (el día persiste), `Día Permadeath: 40/60`, y el hito
+  D40 **no** se vuelve a ejecutar.
+* **REAL30:** `setday 40` reancla el inicio 20 días atrás (`start=2026-09-16 23:05:40 UTC`,
+  `maxElapsed=20d 00h 00m 09s`).
+
+### Hosts que siguen bloqueados en este entorno
+
+La política de red rechaza todavía dos hosts que no hacen falta para compilar:
+
+| Host | Quién lo usa | Cómo se ha resuelto |
+|---|---|---|
+| `resources.download.minecraft.net` | Assets del cliente (sonidos, idiomas). ModDevGradle los descarga para todas las runs | Las runs de servidor (`server`, `gameTestServer`, `smokeServer`) usan un descriptor de assets vacío: un servidor no los lee. `runClient` sigue necesitando el host |
+| `launchermeta.mojang.com` | Instalador oficial de NeoForge (paso `DOWNLOAD_MOJMAPS`) | `tools/server-smoke-test.sh` usa por defecto el runtime de ModDevGradle descrito arriba. Con el host permitido, `SMOKE_RUNTIME=installer tools/server-smoke-test.sh` repite la prueba con un servidor instalado por el instalador oficial |
+
+## 5. Inspección de los jars de producción
+
+| | GAME60 | REAL30 |
+|---|---|---|
+| Fichero | `permadeath-GAME60-neoforge-1.21.1.jar` (745 393 bytes) | `permadeath-REAL30-neoforge-1.21.1.jar` (745 403 bytes) |
+| Entradas | 478 | 478 |
+| `permadeath_profile.properties` | `mode=GAME60` | `mode=REAL30` |
+| Manifiesto | `Implementation-Version: 2.0.0`, `Permadeath-Profile: GAME60`, `Built-Against-NeoForge: 21.1.256` | igual con `REAL30` |
+
+* Descomprimidos y comparados con `diff -r`, los dos jars **solo** difieren en
+  `permadeath_profile.properties` y `META-INF/MANIFEST.MF`. Clases y recursos son idénticos byte a byte (un
+  núcleo, dos builds).
+* `META-INF/neoforge.mods.toml` está expandido: `modId="permadeath"`, `version="2.0.0"`,
+  `loaderVersion="[4,)"`, NeoForge `[21.1.0,)` y Minecraft `[1.21.1]`; declara `permadeath.mixins.json` y
+  `META-INF/accesstransformer.cfg`.
+* Sin `fabric.mod.json`, sin `net/fabricmc/*`, sin `.accesswidener`, y ninguna clase referencia `net.fabricmc`
+  (`verifyProductionJars`).
+
+## Cómo repetir todo
 
 ```
-./gradlew clean build                 # compila, 82 tests, genera y verifica los 2 jars
+./gradlew clean build
 ./gradlew runGameTestServer -PpermadeathMode=GAME60
 ./gradlew runGameTestServer -PpermadeathMode=REAL30
-tools/server-smoke-test.sh            # GAME60 y REAL30 sobre un servidor NeoForge real
+tools/server-smoke-test.sh GAME60 REAL30
 ```
-
-## 1. Tests unitarios del núcleo (ejecutados)
-
-`./gradlew --offline coreTest` → `BUILD SUCCESSFUL`. Informes JUnit en `build/test-results/coreTest`.
-
-| Clase | Tests | Fallos | Casos |
-|---|---|---|---|
-| `GameDayProgressionClockTest` | 13 | 0 | Límites D9→D10, D19→D20, D24→D25, D29→D30, D39→D40, D49→D50, D59→D60; los saltos ejecutan cada hito intermedio una vez; un mundo existente en el día 347 empieza en D0; dormir avanza el calendario; un rollback de `/time` nunca retrocede; `setDay` reancla de forma segura; mover un mundo REAL30 a GAME60 conserva el día |
-| `RealTimeProgressionClockTest` | 24 | 0 | T+0 h → D0; 119 h 59 m → D9; 120 h → D10; 239 h 59 m → D19; 240 h → D20; 299 h 59 m → D24; 300 h → D25; 359 h 59 m → D29; 360 h → D30; 479 h 59 m → D39; 480 h → D40; 599 h 59 m → D49; 600 h → D50; 719 h 59 m → D59; 720 h → D60; 721 h y 1000 h → D60; independiente de los TPS; zona horaria y horario de verano no influyen; el tiempo con el servidor apagado cuenta; un retroceso del reloj del sistema nunca retrocede el día; instantes de hito exactos; `setDay` coherente y persistente; mover un mundo GAME60 a REAL30 conserva el día |
-| `LegacyFabricStateTest` | 2 | 0 | Lee todos los ficheros de Fabric (fecha, tormenta, wither, Life Orb, Mikecrack, manzanas) y los aplica en GAME60; en REAL30 conserva el día y lo limita a 60 |
-| `RulesTest` | 43 | 0 | Tótems D0, D29, D30, D39, D40, D49, D50, D59 y D60 (fallo % y número de tótems), límites de la tirada y prueba de humo con RNG; mobs D0/D9 = 70 y D10/D11/D60 = 140; ahogamiento ×1 (D0, D49), ×5 (D50, D59), ×10 (D60); ceguera D39 = 0, D40/D49 = 1/10000, D50/D59/D60 = 1/5000; duración del Death Train D0…D60 (coincide con PermaDeathCore); buffs del Death Train; umbrales varios (PvP, End, manzanas, vida máxima) |
-| **Total** | **82** | **0** | |
-
-## 2. Validaciones estáticas (ejecutadas)
-
-* **Recursos**: los 160 ficheros JSON de `src/main/resources` se leen sin errores. Hay 31 ficheros con
-  condiciones convertidas de `fabric:load_conditions` a `neoforge:conditions`, y ningún fichero de recursos
-  menciona `fabric`.
-* **Imports**: ningún identificador de clase queda sin importar o declarar, salvo los tipos anidados
-  heredados, que son válidos en Java (`SavedData.Factory`, `Item.Properties`, `Goal.Flag`,
-  `ICondition.IContext`, `Structure.GenerationContext`…).
-* **Referencias entre clases del proyecto**: cada `Clase.miembro` que apunta a una clase del proyecto tiene
-  una declaración real. 0 problemas en 91 ficheros (≈13 000 líneas).
-* `bash -n tools/server-smoke-test.sh`: sintaxis correcta.
-
-Estas comprobaciones **no sustituyen** a la compilación. Los nombres Mojmap de la API de Minecraft/NeoForge,
-los objetivos de los 4 mixins (`getPortalDestination`, `getControllingPassenger`, `tryGenerateStructure`,
-`canBeCollidedWith`, `onPeekAmountChange`) y las 7 entradas del AT (`validateAccessTransformers = true`) se
-validan en la primera build con red y en el primer arranque del servidor.
-
-## 3. GameTests escritos (pendientes de ejecución)
-
-`gametest/PermadeathGameTests` (15 tests, plantilla `permadeath:gametest_empty`). Cada lote fija el día en
-`@BeforeBatch`.
-
-| Lote | Test | Comprueba |
-|---|---|---|
-| d0 | `hostileMobCapVanillaBeforeD10` | Límite 70 |
-| d0 | `drowningVanillaBeforeD50` | Un cerdo sumergido conserva ≥ 280 de aire a los 10 ticks |
-| d0 | `oneTotemSavesBeforeD30` | Un tótem salva y se consume |
-| d0 | `endClosedBeforeD30` | `EntityTravelToDimensionEvent` hacia el End cancelado |
-| d10 | `calendarPhaseFollowsDay` | Día 10 y fase D10-19 |
-| d10 | `hostileMobCapDoubledFromD10` | Límite 140 |
-| d10 | `pvpDisabledBeforeD40` | PvP desactivado |
-| d40 | `torchRecipeRemovedOnD40` | `minecraft:torch` no existe y el hierro de horno sí |
-| d40 | `chestLootPresentBeforeD60` | El loot de mazmorra no está vacío |
-| d40 | `oneTotemIsNotEnoughOnD40` | Con un tótem el jugador muere y el tótem se consume |
-| d40 | `maxHealthPenaltyAndLockedSlotsOnD40` | 12 de vida máxima, hueco 4 bloqueado, PvP activado |
-| d60 | `calendarNeverGoesBeyondD60` | `setDay(70)` → 60 |
-| d60 | `drowningTenTimesFasterOnD60` | ≤ 230 de aire a los 10 ticks (vanilla ≈ 290) |
-| d60 | `chestLootEmptyOnD60` | El loot de mazmorra está vacío |
-| d60 | `maxHealthPenaltyOnD60` | 4 de vida máxima |
-
-## 4. Prueba de servidor dedicado (preparada)
-
-`tools/server-smoke-test.sh` instala el servidor NeoForge de `gradle.properties` y copia el jar de producción
-de cada perfil. Después:
-
-1. **Primer arranque**: comprueba `Calendar <PERFIL> started` y ejecuta `/permadeath status`, `setday 40`,
-   `status`, `debug` y `save-all flush`. Exige `Milestone D40 executed` y `Día Permadeath: 40/60`, sin
-   errores de mixin ni errores de `permadeath`.
-2. **Reinicio**: exige `Calendar <PERFIL> started: PD day 40` (persistencia) y `Día Permadeath: 40/60`, y que
-   el hito D40 **no** se vuelva a ejecutar (idempotencia).

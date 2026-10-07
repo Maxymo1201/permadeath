@@ -1,6 +1,6 @@
 # Permadeath para NeoForge 1.21.1: notas del port
 
-Port nativo a **NeoForge 21.1.x / Minecraft 1.21.1 / Java 21** del mod Fabric `permadeath-1.21.1.jar`
+Port nativo a **NeoForge 21.1.x (compilado y probado con 21.1.256) / Minecraft 1.21.1 / Java 21** del mod Fabric `permadeath-1.21.1.jar`
 (Serthekiller, CC0-1.0, basado en la serie Permadeath de ElRichMC y en el plugin PermaDeathCore). No usa
 Fabric Loader, Fabric API, Sinytra Connector ni `fabric.mod.json`. El código usa nombres Mojang (Mojmap);
 no hace falta Parchment.
@@ -11,6 +11,7 @@ no hace falta Parchment.
 |---|---|
 | `src/core/java` | Núcleo **sin dependencias de Minecraft**: calendario (`ProgressionClock`, `GameDayProgressionClock`, `RealTimeProgressionClock`), `MilestoneTracker`, estado persistido (`ProgressionState`), reglas numéricas por día (`rules/DayRules`, `rules/TotemRules`) y el parser de los ficheros del mod Fabric (`legacy/LegacyFabricState`). |
 | `src/coreTest/java` | Tests JUnit 5 del núcleo (82 casos). |
+| `src/main/java/.../gametest` | 15 GameTests (se ejecutan en los dos perfiles). |
 | `src/main/java` | El mod NeoForge (registros, eventos, fases, mobs, End, The Beginning, comandos, worldgen, mixins, GameTests). |
 | `src/main/resources` | Assets y datos del jar original convertidos (`fabric:load_conditions` → `neoforge:conditions`), `accesstransformer.cfg`, `permadeath.mixins.json`, loot modifier global. |
 | `src/main/templates/META-INF/neoforge.mods.toml` | Descriptor del mod (se expande con `gradle.properties`). |
@@ -31,7 +32,7 @@ eso la tarea `jar` estándar está desactivada.
 ./gradlew coreTest             # 82 tests unitarios del calendario y las reglas (no necesita Minecraft)
 ./gradlew runGameTestServer -PpermadeathMode=GAME60   # GameTests en el entorno de desarrollo (también REAL30)
 ./gradlew runServer -PpermadeathMode=REAL30           # servidor de desarrollo con el perfil indicado
-tools/server-smoke-test.sh     # servidor dedicado real con los jars de build/libs, arranque + reinicio
+tools/server-smoke-test.sh GAME60 REAL30              # servidor dedicado con los jars de build/libs, arranque + reinicio
 ```
 
 `verifyProductionJars` abre los dos jars y falla si falta `META-INF/neoforge.mods.toml`, el AT, la
@@ -40,11 +41,18 @@ configuración de mixins o el perfil; si el perfil no corresponde al nombre del 
 
 ## Dependencias de red de la build
 
-ModDevGradle descarga NeoForm/NeoForge de `maven.neoforged.net` y el cliente/servidor y las librerías de
-Minecraft de `piston-meta.mojang.com`, `piston-data.mojang.com` y `libraries.minecraft.net`. **En el
-entorno donde se hizo este port esos hosts estaban bloqueados por la política de red** (HTTP 403 del proxy,
-ver `PERMADEATH_TEST_REPORT.md`). El núcleo y sus tests sí se compilaron y ejecutaron, porque solo necesitan
-Maven Central y el Gradle Plugin Portal.
+ModDevGradle descarga NeoForm/NeoForge de `maven.neoforged.net` y el servidor, el cliente y las librerías de
+Minecraft de `piston-meta.mojang.com`, `piston-data.mojang.com` y `libraries.minecraft.net`. Con esos cuatro
+hosts basta para `./gradlew clean build`, los GameTests y `tools/server-smoke-test.sh`. Resultados en
+`PERMADEATH_TEST_REPORT.md`.
+
+* Las runs de servidor (`runServer`, `runGameTestServer` y `smokeServer`) usan un descriptor de assets vacío
+  (`writeServerAssetStub`): un servidor no lee los assets del cliente, así que no necesitan
+  `resources.download.minecraft.net`. `runClient` sí lo necesita.
+* `tools/server-smoke-test.sh` arranca por defecto el servidor dedicado NeoForge que prepara ModDevGradle
+  (run `smokeServer`, sin clases del mod: el mod se carga solo desde el jar de producción copiado en `mods/`).
+  Con `SMOKE_RUNTIME=installer` usa el instalador oficial de NeoForge, que además necesita
+  `launchermeta.mojang.com`.
 
 ## Decisiones de diseño
 
