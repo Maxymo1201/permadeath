@@ -127,6 +127,13 @@ La política de red rechaza todavía dos hosts que no hacen falta para compilar:
 * Sin `fabric.mod.json`, sin `net/fabricmc/*`, sin `.accesswidener`, y ninguna clase referencia `net.fabricmc`
   (`verifyProductionJars`).
 
+### Jars entregados (build final, probados con `tools/server-smoke-test.sh`)
+
+| Jar | SHA-256 |
+|---|---|
+| `build/libs/permadeath-GAME60-neoforge-1.21.1.jar` | `ca3d826e14a2a46b5fed2b6c1432c872bb2473d1f081a917e6ed85bde402c3be` |
+| `build/libs/permadeath-REAL30-neoforge-1.21.1.jar` | `04072abcc3f35f89ee7aa593f20d3fc3a2f44ae81d4c196aa28d38a67a66d3a4` |
+
 ## Cómo repetir todo
 
 ```
