@@ -3,6 +3,7 @@ package com.serthekiller.permadeath.gametest;
 import com.mojang.authlib.GameProfile;
 import com.serthekiller.permadeath.PermadeathMod;
 import com.serthekiller.permadeath.core.PermadeathCalendar;
+import com.serthekiller.permadeath.end.EnderDragonDemon;
 import com.serthekiller.permadeath.mechanics.DeathTrain;
 import com.serthekiller.permadeath.mechanics.LockedSlots;
 import com.serthekiller.permadeath.mechanics.PlayerHealth;
@@ -33,6 +34,8 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.SimpleContainer;
+import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -44,10 +47,14 @@ import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.animal.IronGolem;
 import net.minecraft.world.entity.animal.Pig;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.item.PrimedTnt;
 import net.minecraft.world.entity.monster.AbstractSkeleton;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Witch;
 import net.minecraft.world.entity.projectile.ThrownEnderpearl;
+import net.minecraft.world.inventory.ChestMenu;
+import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.GameType;
@@ -112,6 +119,12 @@ public final class PermadeathGameTests {
 
     @BeforeBatch(batch = "d40")
     public static void day40(ServerLevel level) {
+        setDay(level, 40);
+    }
+
+    /** Own batch: the power 15 explosion of the dragon TNT would hurt the players of the other D40 tests. */
+    @BeforeBatch(batch = "d40tnt")
+    public static void day40Tnt(ServerLevel level) {
         setDay(level, 40);
     }
 
@@ -338,6 +351,46 @@ public final class PermadeathGameTests {
             helper.assertTrue(LockedSlots.isBlocker(player.getInventory().getItem(4)), "slot 4 must be locked on D40");
             helper.assertTrue(helper.getLevel().getServer().isPvpAllowed(), "PvP must be enabled from D40");
             finish(helper, player);
+        });
+    }
+
+    @GameTest(template = EMPTY, batch = "d40", timeoutTicks = 60)
+    public static void numberKeySwapIntoLockedSlotReturnsTheItemToTheChest(GameTestHelper helper) {
+        ServerPlayer player = mockPlayer(helper);
+        SimpleContainer chest = new SimpleContainer(27);
+        chest.setItem(0, new ItemStack(Items.DIAMOND, 7));
+        helper.runAtTickTime(5, () -> {
+            player.openMenu(new SimpleMenuProvider((id, inventory, p) -> ChestMenu.threeRows(id, inventory, chest), Component.literal("test")));
+            // Number key 5 over the first chest slot: the diamonds go to the locked hotbar slot 4.
+            player.containerMenu.clicked(0, 4, ClickType.SWAP, player);
+            helper.assertTrue(player.getInventory().getItem(4).is(Items.DIAMOND), "the swap should have reached the locked slot");
+        });
+        helper.runAtTickTime(10, () -> {
+            helper.assertTrue(LockedSlots.isBlocker(player.getInventory().getItem(4)), "slot 4 must be locked again");
+            helper.assertTrue(chest.getItem(0).is(Items.DIAMOND) && chest.getItem(0).getCount() == 7,
+                    "the diamonds must go back to the chest, found " + chest.getItem(0));
+            helper.assertTrue(helper.getLevel().getEntitiesOfClass(ItemEntity.class, player.getBoundingBox().inflate(8.0)).isEmpty(),
+                    "nothing may be thrown on the ground");
+            player.closeContainer();
+            finish(helper, player);
+        });
+    }
+
+    @GameTest(template = EMPTY, batch = "d40tnt", timeoutTicks = 60)
+    public static void dragonTntExplodesOnceWithoutBreakingBlocks(GameTestHelper helper) {
+        BlockPos center = new BlockPos(3, 2, 3);
+        List<BlockPos> around = List.of(center.below(), center.north(), center.south(), center.east(), center.west());
+        around.forEach(pos -> helper.setBlock(pos, Blocks.STONE));
+        BlockPos abs = helper.absolutePos(center);
+        PrimedTnt tnt = new PrimedTnt(helper.getLevel(), abs.getX() + 0.5, abs.getY(), abs.getZ() + 0.5, null);
+        tnt.setFuse(5);
+        tnt.addTag(EnderDragonDemon.DRAGON_TNT_TAG);
+        helper.getLevel().addFreshEntity(tnt);
+        helper.runAtTickTime(20, () -> {
+            helper.assertTrue(tnt.isRemoved(), "the dragon TNT must have exploded");
+            // Only the plugin explosion (power 15, no block damage) may run, not the vanilla power 4 one.
+            around.forEach(pos -> helper.assertBlockPresent(Blocks.STONE, pos));
+            helper.succeed();
         });
     }
 

@@ -143,6 +143,11 @@ public final class EnderDragonDemon {
         }
         State state = state(dragon);
         state.healthBeforeTick = dragon.getHealth();
+        if (phase(dragon) == EnderDragonPhase.DYING) {
+            // The dragon stops attacking while it flies to the podium to die.
+            stopAttacks(state);
+            return;
+        }
         checkEnraged(dragon, state);
         handleSpinning(dragon, state, level);
         if (!state.spinning) {
@@ -207,12 +212,25 @@ public final class EnderDragonDemon {
             // Plugin onDragonRegen: crystals heal the demon half as much.
             dragon.setHealth(dragon.getHealth() - healed / 2.0F);
         }
+        if (!dragon.isAlive() || phase(dragon) == EnderDragonPhase.DYING) {
+            // Killed while perched (health 0, no DYING phase) or dying: no spin, clouds or lightning during the death animation.
+            stopAttacks(state);
+            return;
+        }
         if (state.spinning) {
             performSpin(dragon, state, level);
         }
         if (state.lightningActive) {
             continueLightning(state, level);
         }
+    }
+
+    private static void stopAttacks(State state) {
+        state.spinning = false;
+        state.ticksAtPortal = 0;
+        state.flyingAttackTimer = 0;
+        state.lightningActive = false;
+        state.lightningTarget = null;
     }
 
     private static void checkEnraged(EnderDragon dragon, State state) {

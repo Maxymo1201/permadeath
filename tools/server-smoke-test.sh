@@ -4,7 +4,8 @@
 #      runs /permadeath status, setday 40, status, storm addHours 2, event shulkershell, status, debug, then stops it
 #   2. boots it again and checks that day 40 and the Death Train survived the restart and that milestone D40 did
 #      not run twice; then sets day 60 and checks that every chest of the nearest Ytic city of The Beginning (and of
-#      the islands around it) still rolls its loot (/permadeath debug beginningloot)
+#      the islands around it) still rolls its loot and that only the two containers with fixed contents have no loot
+#      table (/permadeath debug beginningloot)
 #
 # Runtimes (SMOKE_RUNTIME):
 #   moddev    (default) dedicated NeoForge server of gradle.properties prepared by ModDevGradle ("smokeServer" run,
@@ -106,5 +107,7 @@ for PROFILE in "${PROFILES[@]}"; do
     grep -q 'Death Train activo' "$DIR/boot2.log" || fail "the Death Train did not survive the restart"
     # D60: the chests of the Ytic city and of the islands of The Beginning still have their loot.
     grep -Eq 'Cofres de The Beginning .*con tabla de loot: [1-9][0-9]*, vacíos: 0\)' "$DIR/boot2.log" || fail "empty chests in The Beginning on D60"
+    # Only the two containers with fixed contents (trapped chest with tools, shulker box with gold) have no table.
+    [ "$(grep -c ' sin tabla objetos: ' "$DIR/boot2.log")" -le 2 ] || fail "a chest of The Beginning has no loot table"
     echo "SMOKE OK [$PROFILE] ($RUNTIME runtime) logs: $DIR/boot1.log $DIR/boot2.log"
 done

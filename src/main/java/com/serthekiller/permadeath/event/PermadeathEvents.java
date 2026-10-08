@@ -276,6 +276,11 @@ public final class PermadeathEvents {
             return;
         }
         GameplayRules.onEntityTickPre(entity);
+        if (entity.isRemoved()) {
+            // Discarded by a rule (dragon TNT that already exploded): skip the vanilla tick, or the TNT explodes again.
+            event.setCanceled(true);
+            return;
+        }
         if (entity instanceof EnderDragon dragon) {
             EnderDragonDemon.onTickPre(dragon);
         } else if (entity instanceof EndCrystal crystal) {

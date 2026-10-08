@@ -263,7 +263,8 @@ public final class GameplayRules {
                     }
                     BlockPos pos = center.offset(x, y, z);
                     var state = level.getBlockState(pos);
-                    if (state.isAir() || state.getDestroySpeed(level, pos) < 0.0F) {
+                    // Block entities (chests, shulker boxes, spawners) stay: a falling block would lose their contents.
+                    if (state.isAir() || state.hasBlockEntity() || state.getDestroySpeed(level, pos) < 0.0F) {
                         continue;
                     }
                     var falling = FallingBlockEntity.fall(level, pos, state);
@@ -634,6 +635,8 @@ public final class GameplayRules {
         }
         int d = day();
         if (d < 30 || !EnderMobs.isDragonAlive(level)) {
+            // Forget the state of a past fight, or the next dragon punishes a night vision lost long ago.
+            HAD_NIGHT_VISION.remove(player.getUUID());
             return;
         }
         boolean hasNightVision = player.hasEffect(MobEffects.NIGHT_VISION);

@@ -104,13 +104,31 @@ public final class LockedSlots {
                     if (blockerOnCursor && player.containerMenu.getCarried().isEmpty()) {
                         // The player clicked the blocker with an item: undo the swap.
                         player.containerMenu.setCarried(stack);
-                    } else {
+                    } else if (!undoContainerSwap(player, stack) && !inventory.add(stack)) {
                         player.drop(stack, false);
                     }
                 }
                 player.displayClientMessage(Component.literal(message).withStyle(ChatFormatting.BOLD), true);
             }
         }
+    }
+
+    /**
+     * A number-key swap from an open container put a container item in the locked slot and the blocker in the
+     * container: give the item back its container slot instead of throwing it on the ground (lost over the void in
+     * The Beginning).
+     */
+    private static boolean undoContainerSwap(ServerPlayer player, ItemStack stack) {
+        if (player.containerMenu == player.inventoryMenu) {
+            return false;
+        }
+        for (Slot slot : player.containerMenu.slots) {
+            if (slot.container != player.getInventory() && isBlocker(slot.getItem())) {
+                slot.set(stack);
+                return true;
+            }
+        }
+        return false;
     }
 
     /** D40+: the off-hand swap (F) never moves a blocker. */

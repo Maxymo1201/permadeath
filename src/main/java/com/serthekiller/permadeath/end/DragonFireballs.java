@@ -173,7 +173,13 @@ public final class DragonFireballs {
         }
         for (int x = 0; x < 2; x++) {
             for (int z = 0; z < 2; z++) {
-                level.setBlock(ground.offset(x, 0, z), state, 3);
+                BlockPos pos = ground.offset(x, 0, z);
+                BlockState current = level.getBlockState(pos);
+                // The exit portal (bedrock, portal blocks) and block entities such as shulker boxes are never replaced.
+                if (current.hasBlockEntity() || current.getDestroySpeed(level, pos) < 0.0F) {
+                    continue;
+                }
+                level.setBlock(pos, state, 3);
             }
         }
     }
