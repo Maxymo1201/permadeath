@@ -93,7 +93,9 @@ public final class DeathTrain {
             if (!overworld.isRaining() || !overworld.isThundering()) {
                 applyWeather(overworld, remaining);
             }
-            if (DayRules.deathTrainDisablesRegeneration(day) && !state.deathTrainUhcActive) {
+            if (DayRules.deathTrainDisablesRegeneration(day) && !state.deathTrainUhcActive
+                    && server.getGameRules().getBoolean(GameRules.RULE_NATURAL_REGENERATION)) {
+                // Only when the storm really changes the rule: a server that keeps it off must not get it back on later.
                 setNaturalRegeneration(server, false);
                 state.deathTrainUhcActive = true;
                 state.markChanged();

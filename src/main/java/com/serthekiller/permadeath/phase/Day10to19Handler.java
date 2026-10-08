@@ -38,6 +38,11 @@ public final class Day10to19Handler implements PhaseHandler {
 
     @Override
     public void onPhaseEnd(ServerLevel overworld) {
+        resetState();
+    }
+
+    @Override
+    public void resetState() {
         sleeping.clear();
         sleepCheckCooldown = 0;
     }

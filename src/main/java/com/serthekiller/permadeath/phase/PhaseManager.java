@@ -89,5 +89,8 @@ public final class PhaseManager {
 
     public static void reset() {
         currentPhase = -1;
+        for (PhaseHandler handler : HANDLERS) {
+            handler.resetState();
+        }
     }
 }

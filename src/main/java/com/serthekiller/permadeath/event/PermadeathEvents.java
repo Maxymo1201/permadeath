@@ -26,6 +26,7 @@ import com.serthekiller.permadeath.mechanics.WitherSpawner;
 import com.serthekiller.permadeath.mechanics.WorldRules;
 import com.serthekiller.permadeath.mobs.ExplodingAnimals;
 import com.serthekiller.permadeath.mobs.GoalRestorer;
+import com.serthekiller.permadeath.mobs.HostileMobConverter;
 import com.serthekiller.permadeath.mobs.MobTracking;
 import com.serthekiller.permadeath.phase.PhaseCommon;
 import com.serthekiller.permadeath.phase.PhaseHandler;
@@ -189,6 +190,7 @@ public final class PermadeathEvents {
         EndPillars.reset();
         EnderDragonDemon.reset();
         GoalRestorer.reset();
+        HostileMobConverter.reset();
         MushroomSpawn.disable();
         MobCapController.restoreVanilla();
         PermadeathMod.LOGGER.info("[Permadeath] Server stopped: runtime state cleared");

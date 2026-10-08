@@ -34,6 +34,11 @@ public final class Day0to9Handler implements PhaseHandler {
 
     @Override
     public void onPhaseEnd(ServerLevel overworld) {
+        resetState();
+    }
+
+    @Override
+    public void resetState() {
         sleeping.clear();
         sleepMessageCooldown = 0;
     }

@@ -74,6 +74,10 @@ public final class HostileMobConverter {
     }
 
     /** Mobs that are re-converted even if already processed this session (Fabric isSpecialNeutral). */
+    public static void reset() {
+        DeathCodWeapon.reset();
+    }
+
     public static boolean isSpecialNeutral(EntityType<?> type) {
         return type == EntityType.WOLF || type == EntityType.BEE || type == EntityType.POLAR_BEAR || type == EntityType.FROG
                 || type == EntityType.ZOMBIFIED_PIGLIN || type == EntityType.AXOLOTL || type == EntityType.PIGLIN
@@ -547,6 +551,12 @@ public final class HostileMobConverter {
     static final class DeathCodWeapon {
         private static ItemStack cached;
         private static Object cachedFor;
+
+        /** Server stop: drop the stack and the registries of the old world. */
+        static void reset() {
+            cached = null;
+            cachedFor = null;
+        }
 
         static ItemStack get(ServerLevel level) {
             Object key = level.registryAccess();

@@ -37,6 +37,10 @@ public interface PhaseHandler {
     default void onPhaseEnd(ServerLevel overworld) {
     }
 
+    /** Server stop: forget the in-memory state of this world (the handlers are reused by the next world). */
+    default void resetState() {
+    }
+
     /** End of a level tick (called for every dimension, like Fabric END_WORLD_TICK). */
     default void onLevelTick(ServerLevel level) {
     }
