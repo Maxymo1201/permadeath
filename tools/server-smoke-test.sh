@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Dedicated-server smoke + restart test of the PRODUCTION jars (build/libs/permadeath-<PROFILE>-neoforge-1.21.1.jar).
 #   1. boots a dedicated NeoForge server whose mods/ folder only contains the production jar,
-#      runs /permadeath status, setday 40, status, debug, then stops it
-#   2. boots it again and checks that day 40 survived the restart and that milestone D40 did not run twice
+#      runs /permadeath status, setday 40, status, storm addHours 2, event shulkershell, status, debug, then stops it
+#   2. boots it again and checks that day 40 and the Death Train survived the restart and that milestone D40 did
+#      not run twice
 #
 # Runtimes (SMOKE_RUNTIME):
 #   moddev    (default) dedicated NeoForge server of gradle.properties prepared by ModDevGradle ("smokeServer" run,
@@ -85,10 +86,14 @@ for PROFILE in "${PROFILES[@]}"; do
     prepare_dir "$DIR" "$JAR"
 
     # --- first boot -------------------------------------------------------------------------------------
-    run_server "$DIR" "$DIR/boot1.log" "permadeath status" "permadeath setday 40" "permadeath status" "permadeath debug" "save-all flush"
+    run_server "$DIR" "$DIR/boot1.log" "permadeath status" "permadeath setday 40" "permadeath status" \
+        "permadeath storm addHours 2" "permadeath event shulkershell" "permadeath status" "permadeath debug" "save-all flush"
     grep -q "Calendar ${PROFILE} started" "$DIR/boot1.log" || fail "calendar ${PROFILE} not started"
     grep -q 'Milestone D40 executed' "$DIR/boot1.log" || fail "milestone D40 not executed on first boot"
     grep -q 'Día Permadeath: 40/60' "$DIR/boot1.log" || fail "status does not show day 40"
+    grep -q 'Operación completada exitosamente' "$DIR/boot1.log" || fail "storm addHours failed"
+    grep -q 'Se ha iniciado el evento correctamente' "$DIR/boot1.log" || fail "event shulkershell failed"
+    grep -q 'Death Train activo' "$DIR/boot1.log" || fail "status does not show the Death Train"
     if grep -Eiq 'mixin.*(apply|inject).*(fail|error)|InvalidInjectionException|InjectionError' "$DIR/boot1.log"; then fail "mixin errors"; fi
     if grep -Eq 'ERROR.*\[(permadeath|com\.serthekiller)' "$DIR/boot1.log"; then fail "errors logged by permadeath"; fi
 
@@ -97,5 +102,6 @@ for PROFILE in "${PROFILES[@]}"; do
     grep -q "Calendar ${PROFILE} started: PD day 40" "$DIR/boot2.log" || fail "day 40 not persisted across restart"
     if grep -q 'Milestone D40 executed' "$DIR/boot2.log"; then fail "milestone D40 executed twice"; fi
     grep -q 'Día Permadeath: 40/60' "$DIR/boot2.log" || fail "status after restart does not show day 40"
+    grep -q 'Death Train activo' "$DIR/boot2.log" || fail "the Death Train did not survive the restart"
     echo "SMOKE OK [$PROFILE] ($RUNTIME runtime) logs: $DIR/boot1.log $DIR/boot2.log"
 done

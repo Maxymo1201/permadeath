@@ -3,6 +3,7 @@ package com.serthekiller.permadeath;
 import com.mojang.logging.LogUtils;
 import com.serthekiller.permadeath.event.PermadeathEvents;
 import com.serthekiller.permadeath.items.NetheriteTools;
+import com.serthekiller.permadeath.mobs.BeginningMobs;
 import com.serthekiller.permadeath.loot.D60LootModifier;
 import com.serthekiller.permadeath.recipes.PermadeathRecipes;
 import com.serthekiller.permadeath.registry.DayConditions;
@@ -39,6 +40,7 @@ public final class PermadeathMod {
         ModWorldgen.register(modBus);
         modBus.addListener(ModCreativeTabs::onBuildContents);
         modBus.addListener(NetheriteTools::onModifyDefaultComponents);
+        modBus.addListener(BeginningMobs::onRegisterSpawnPlacements);
         PermadeathEvents.register(NeoForge.EVENT_BUS);
     }
 }

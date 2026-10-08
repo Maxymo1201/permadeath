@@ -104,8 +104,9 @@ public final class EnderMobs {
         Ghast ghast = new Ghast(EntityType.GHAST, level);
         ghast.setPos(x, y, z);
         if (level.dimension() == BeginningDimension.LEVEL_KEY) {
+            // Plugin: "Ender Ghast Definitivo" with 150 HP (Fabric 240).
             MobUtil.name(ghast, "§6Ghast Definitivo");
-            MobUtil.setMaxHealth(ghast, 240.0);
+            MobUtil.setMaxHealth(ghast, 150.0);
         } else {
             MobUtil.name(ghast, "§6Ender Ghast");
             MobUtil.setMaxHealth(ghast, 75.0);

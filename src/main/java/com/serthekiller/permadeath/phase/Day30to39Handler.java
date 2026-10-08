@@ -46,9 +46,6 @@ import net.neoforged.neoforge.event.entity.living.LivingDropsEvent;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.entity.player.CanPlayerSleepEvent;
 
-import java.util.HashSet;
-import java.util.Set;
-import java.util.UUID;
 
 import static com.serthekiller.permadeath.util.MobUtil.ench;
 
@@ -58,7 +55,6 @@ import static com.serthekiller.permadeath.util.MobUtil.ench;
  * (TotemSystem, global).
  */
 public final class Day30to39Handler implements PhaseHandler {
-    private final Set<UUID> processedEndermen = new HashSet<>();
 
     @Override
     public String name() {
@@ -74,11 +70,6 @@ public final class Day30to39Handler implements PhaseHandler {
                 PhaseCommon.convertIfNeeded(living);
             }
         });
-    }
-
-    @Override
-    public void onPhaseEnd(ServerLevel overworld) {
-        processedEndermen.clear();
     }
 
     @Override
@@ -101,7 +92,8 @@ public final class Day30to39Handler implements PhaseHandler {
         if (!(entity instanceof LivingEntity living)) {
             return;
         }
-        if (living instanceof EnderMan enderman && level.dimension() == Level.END && handleEndEnderman(enderman, level)) {
+        if (living instanceof EnderMan enderman && level.dimension() == Level.END
+                && endEndermanRoll(enderman, level, loadedFromDisk, EnderMobs.ENDER_CREEPER_NAME)) {
             return;
         }
         if (living instanceof Creeper creeper) {
@@ -132,28 +124,27 @@ public final class Day30to39Handler implements PhaseHandler {
         PhaseCommon.convertIfNeeded(living);
     }
 
-    /** End endermen: 11% Ender Creeper, 4% Ender Ghast (only while the dragon is dead). */
-    private boolean handleEndEnderman(EnderMan enderman, ServerLevel level) {
-        if (enderman.isRemoved() || processedEndermen.contains(enderman.getUUID())) {
+    /**
+     * Freshly spawned End endermen (plugin EndManager, both editions): 1 in 20 becomes an Ender Creeper and, while
+     * the dragon is dead, 1 in 170 an Ender Ghast. Fabric used 11 % / 4 % and re-rolled on every reload.
+     * @return true when the enderman was replaced.
+     */
+    static boolean endEndermanRoll(EnderMan enderman, ServerLevel level, boolean loadedFromDisk, String creeperName) {
+        if (enderman.isRemoved() || loadedFromDisk || !MobTracking.tryClaim(enderman, "end_enderman_roll")) {
             return enderman.isRemoved();
         }
-        int chance = level.random.nextInt(100);
-        if (chance <= 10) {
+        if (level.random.nextInt(20) == 0) {
             Creeper creeper = new Creeper(EntityType.CREEPER, level);
             creeper.setPos(enderman.getX(), enderman.getY(), enderman.getZ());
+            creeper.setCustomName(Component.literal(creeperName));
             level.addFreshEntity(creeper);
-            creeper.setCustomName(Component.literal(EnderMobs.ENDER_CREEPER_NAME));
             enderman.discard();
             return true;
         }
-        if (chance < 15) {
-            if (!EnderMobs.isDragonAlive(level)) {
-                EnderMobs.spawnEnderGhast(level, enderman.getX(), enderman.getY() + 3.0, enderman.getZ());
-                enderman.discard();
-                return true;
-            }
-        } else {
-            processedEndermen.add(enderman.getUUID());
+        if (level.random.nextInt(170) == 0 && !EnderMobs.isDragonAlive(level)) {
+            EnderMobs.spawnEnderGhast(level, enderman.getX(), enderman.getY() + 3.0, enderman.getZ());
+            enderman.discard();
+            return true;
         }
         return false;
     }

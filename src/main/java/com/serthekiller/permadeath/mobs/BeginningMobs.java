@@ -11,12 +11,16 @@ import net.minecraft.world.entity.Display;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.SpawnPlacementTypes;
 import net.minecraft.world.entity.monster.Ghast;
+import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.Vex;
 import net.minecraft.world.entity.monster.WitherSkeleton;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.enchantment.Enchantments;
+import net.minecraft.world.level.levelgen.Heightmap;
+import net.neoforged.neoforge.event.entity.RegisterSpawnPlacementsEvent;
 
 import static com.serthekiller.permadeath.util.MobUtil.ench;
 
@@ -39,12 +43,21 @@ public final class BeginningMobs {
         skeleton.setCustomName(Component.literal("§6Wither Skeleton Rosáceo"));
     }
 
-    /** Unnamed ghasts of The Beginning are replaced by a Ghast Definitivo 3 blocks higher. */
+    /**
+     * Natural vexes only spawn in The Beginning (its biome is the only one listing them, plugin "Vex Definitivo"
+     * spawn); vanilla registers no placement for vexes, so they get the usual monster rules on the ground.
+     */
+    public static void onRegisterSpawnPlacements(RegisterSpawnPlacementsEvent event) {
+        event.register(EntityType.VEX, SpawnPlacementTypes.ON_GROUND, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+                Monster::checkMonsterSpawnRules, RegisterSpawnPlacementsEvent.Operation.REPLACE);
+    }
+
+    /** Unnamed ghasts of The Beginning are replaced by a Ghast Definitivo 5 blocks higher (plugin). */
     public static boolean replaceGhast(Ghast ghast, ServerLevel level) {
         if (ghast.hasCustomName()) {
             return false;
         }
-        EnderMobs.spawnEnderGhast(level, ghast.getX(), ghast.getY() + 3.0, ghast.getZ());
+        EnderMobs.spawnEnderGhast(level, ghast.getX(), ghast.getY() + 5.0, ghast.getZ());
         ghast.discard();
         return true;
     }

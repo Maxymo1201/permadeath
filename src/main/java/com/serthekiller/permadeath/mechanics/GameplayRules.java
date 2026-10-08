@@ -3,6 +3,7 @@ package com.serthekiller.permadeath.mechanics;
 import com.serthekiller.permadeath.beginning.BeginningDimension;
 import com.serthekiller.permadeath.core.rules.DayRules;
 import com.serthekiller.permadeath.data.SurvivalAchievementData;
+import com.serthekiller.permadeath.end.EnderDragonDemon;
 import com.serthekiller.permadeath.mobs.EnderMobs;
 import com.serthekiller.permadeath.mobs.SpecialMobs;
 import com.serthekiller.permadeath.progression.Permadeath;
@@ -25,8 +26,11 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LightningBolt;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.goal.WrappedGoal;
 import net.minecraft.world.entity.animal.Bee;
+import net.minecraft.world.entity.boss.EnderDragonPart;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.wither.WitherBoss;
 import net.minecraft.world.entity.decoration.ItemFrame;
 import net.minecraft.world.entity.item.FallingBlockEntity;
@@ -45,19 +49,25 @@ import net.minecraft.world.entity.projectile.LlamaSpit;
 import net.minecraft.world.entity.projectile.ShulkerBullet;
 import net.minecraft.world.entity.projectile.WitherSkull;
 import net.minecraft.world.entity.vehicle.AbstractMinecart;
+import net.minecraft.world.item.BucketItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.SolidBucketItem;
 import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.Explosion;
+import net.minecraft.world.level.ExplosionDamageCalculator;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.material.FluidState;
+import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.common.EffectCures;
+import net.neoforged.neoforge.common.util.TriState;
 import net.neoforged.neoforge.event.CommandEvent;
 import net.neoforged.neoforge.event.entity.EntityInvulnerabilityCheckEvent;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
@@ -91,6 +101,8 @@ public final class GameplayRules {
     public static final String LIGHTNING_CLOUD = "LightningCloud";
     /** Ender Creeper born from a D40+ Nether enderman: its explosion turns the crater into magma (plugin). */
     public static final String NETHER_CREEPER_TAG = "permadeath:nether_creeper";
+    /** Natural creeper of The Beginning: explosion radius 7 (plugin) instead of 20. */
+    public static final String BEGINNING_CREEPER_TAG = "permadeath:beginning_creeper";
 
     private static final String[] CHEAT_PREFIXES = {"gamemode", "gm", "give", "clear", "effect", "xp", "experience", "enchant",
             "attribute", "data merge entity", "summon", "setblock", "fill", "clone", "spreadplayers"};
@@ -198,7 +210,7 @@ public final class GameplayRules {
         if (!name.contains("Quantum Creeper")) {
             return;
         }
-        creeper.explosionRadius = 20;
+        creeper.explosionRadius = creeper.getTags().contains(BEGINNING_CREEPER_TAG) ? 7 : 20;
         if (day() >= 60) {
             creeper.maxSwell = 15;
         }
@@ -216,8 +228,27 @@ public final class GameplayRules {
         }
     }
 
-    /** PrimedTntMixin: dragon TNT ("PermadeathTNT") throws every block within 6 blocks into the air. */
+    /** Explosion of the demon's TNT barrage: hurts everything but the dragon itself. */
+    private static final ExplosionDamageCalculator SPARES_DRAGON = new ExplosionDamageCalculator() {
+        @Override
+        public boolean shouldDamageEntity(Explosion explosion, Entity entity) {
+            return !(entity instanceof EnderDragon) && !(entity instanceof EnderDragonPart) && super.shouldDamageEntity(explosion, entity);
+        }
+    };
+
+    /**
+     * PrimedTntMixin: dragon TNT ("PermadeathTNT") throws every block within 6 blocks into the air. The TNT of the
+     * demon's barrage ({@link EnderDragonDemon#DRAGON_TNT_TAG}) explodes with power 15 without breaking blocks
+     * (plugin "dragontnt").
+     */
     private static void permadeathTnt(PrimedTnt tnt) {
+        if (tnt.getTags().contains(EnderDragonDemon.DRAGON_TNT_TAG) && tnt.getFuse() <= 1) {
+            ServerLevel level = (ServerLevel) tnt.level();
+            tnt.discard();
+            level.explode(tnt, Explosion.getDefaultDamageSource(level, tnt), SPARES_DRAGON, tnt.getX(), tnt.getY(0.0625), tnt.getZ(),
+                    15.0F, false, Level.ExplosionInteraction.NONE);
+            return;
+        }
         if (!tnt.getTags().contains(PERMADEATH_TNT) || tnt.getFuse() > 1) {
             return;
         }
@@ -267,6 +298,10 @@ public final class GameplayRules {
             // creepermixin: creepers never leave lingering effect clouds.
             event.setCanceled(true);
             return;
+        }
+        if (entity instanceof Mob mob && !event.loadedFromDisk() && DeathTrain.isActive()) {
+            // Plugin: mobs spawning during a Death Train get its buffs too.
+            DeathTrain.applyBuffs(mob, day());
         }
         if (entity instanceof LargeFireball fireball && fireball.getOwner() instanceof Ghast ghast && !event.loadedFromDisk()) {
             ghastFireballPower(fireball, ghast);
@@ -411,18 +446,24 @@ public final class GameplayRules {
 
     // =========================================================================== death / drops
 
-    /** LivingEntityMixin#onShulkerDeath: a primed TNT (4 s) and a rare shell that survives it. */
+    /**
+     * LivingEntityMixin#onShulkerDeath: a primed TNT (4 s) and a rare shell that survives it. As in the plugin the red
+     * shulker of the death module and shulkers with a TNT already within 2 blocks leave no TNT, and the shells come
+     * in pairs during the "X2 Shulker Shells" event.
+     */
     public static void onDeath(LivingEntity entity) {
         if (!(entity instanceof Shulker shulker) || !(shulker.level() instanceof ServerLevel level)) {
             return;
         }
-        PrimedTnt tnt = new PrimedTnt(level, shulker.getX(), shulker.getY(), shulker.getZ(), null);
-        tnt.setFuse(80);
-        level.addFreshEntity(tnt);
+        if (!shulker.getTags().contains("ShulkerRojo")
+                && level.getEntitiesOfClass(PrimedTnt.class, shulker.getBoundingBox().inflate(2.0)).isEmpty()) {
+            primeTnt(level, shulker.position(), 80);
+        }
         int d = day();
         float chance = d < 40 ? (d == 35 ? 0.4F : 0.2F) : 0.02F;
         if (shulker.getRandom().nextFloat() < chance) {
-            ItemEntity shell = new ItemEntity(level, shulker.getX(), shulker.getY(), shulker.getZ(), new ItemStack(Items.SHULKER_SHELL));
+            ItemEntity shell = new ItemEntity(level, shulker.getX(), shulker.getY(), shulker.getZ(),
+                    new ItemStack(Items.SHULKER_SHELL, ShulkerShellEvent.isActive() ? 2 : 1));
             shell.setInvulnerable(true);
             shell.setPickUpDelay(85);
             level.addFreshEntity(shell);
@@ -445,10 +486,7 @@ public final class GameplayRules {
         }
         HitResult hit = event.getRayTraceResult();
         if (projectile instanceof ShulkerBullet bullet) {
-            // ShulkerBulletMixin: every shulker bullet impact primes a TNT (4 s).
-            PrimedTnt tnt = new PrimedTnt(level, bullet.getX(), bullet.getY(), bullet.getZ(), null);
-            tnt.setFuse(80);
-            level.addFreshEntity(tnt);
+            shulkerBulletTnt(level, bullet, hit);
         } else if (projectile instanceof LlamaSpit spit && day() >= 50 && hit instanceof EntityHitResult entityHit
                 && entityHit.getEntity() instanceof LivingEntity living) {
             // MixinLlamaSpit: D50+ poison III (30 s), nausea and a strong push.
@@ -465,6 +503,30 @@ public final class GameplayRules {
             living.addEffect(new MobEffectInstance(MobEffects.LEVITATION, 100, 49));
             living.addEffect(new MobEffectInstance(MobEffects.WITHER, 400, 4));
         }
+    }
+
+    /**
+     * ShulkerBulletMixin: a shulker bullet impact primes a TNT (4 s). In the End the plugin numbers apply
+     * (EndManager#onHit): 1 s at the entity that was hit, 2 s next to the block that was hit if it is at least 4
+     * blocks away from the shulker, and nothing for closer blocks.
+     */
+    private static void shulkerBulletTnt(ServerLevel level, ShulkerBullet bullet, HitResult hit) {
+        if (level.dimension() == Level.END && bullet.getOwner() instanceof Shulker shooter) {
+            if (hit instanceof EntityHitResult entityHit && entityHit.getEntity() != shooter) {
+                primeTnt(level, entityHit.getEntity().position(), 20);
+            } else if (hit instanceof BlockHitResult blockHit
+                    && shooter.position().distanceTo(Vec3.atCenterOf(blockHit.getBlockPos())) >= 4.0) {
+                primeTnt(level, Vec3.atBottomCenterOf(blockHit.getBlockPos().relative(blockHit.getDirection())), 40);
+            }
+            return;
+        }
+        primeTnt(level, bullet.position(), 80);
+    }
+
+    private static void primeTnt(ServerLevel level, Vec3 pos, int fuse) {
+        PrimedTnt tnt = new PrimedTnt(level, pos.x, pos.y, pos.z, null);
+        tnt.setFuse(fuse);
+        level.addFreshEntity(tnt);
     }
 
     // =========================================================================== effects
@@ -560,7 +622,10 @@ public final class GameplayRules {
 
     // =========================================================================== players
 
-    /** PlayerMixin: D30-39, in the End with the dragon alive, losing Night Vision leaves a "dark hearts" cloud. */
+    /**
+     * PlayerMixin: from D30, in the End with the dragon alive, losing Night Vision leaves a "dark hearts" cloud
+     * (the plugin punishes the night vision attack on every day; Fabric stopped at D40).
+     */
     public static void onPlayerTick(ServerPlayer player) {
         ServerLevel level = player.serverLevel();
         if (level.dimension() != Level.END) {
@@ -568,7 +633,7 @@ public final class GameplayRules {
             return;
         }
         int d = day();
-        if (d < 30 || d >= 40 || !EnderMobs.isDragonAlive(level)) {
+        if (d < 30 || !EnderMobs.isDragonAlive(level)) {
             return;
         }
         boolean hasNightVision = player.hasEffect(MobEffects.NIGHT_VISION);
@@ -584,8 +649,17 @@ public final class GameplayRules {
         HAD_NIGHT_VISION.put(player.getUUID(), hasNightVision);
     }
 
-    /** BucketItemMixin: from D50 empty buckets cannot pick up water or lava. */
+    /**
+     * BucketItemMixin: from D50 empty buckets cannot pick up water or lava. In The Beginning no bucket can be emptied
+     * (plugin BeginningManager#onBucket: no water clutches or lava over the void islands).
+     */
     public static void onRightClickItem(PlayerInteractEvent.RightClickItem event) {
+        if (event.getLevel().dimension() == BeginningDimension.LEVEL_KEY && event.getItemStack().getItem() instanceof BucketItem bucket
+                && bucket.content != Fluids.EMPTY) {
+            event.setCanceled(true);
+            event.setCancellationResult(InteractionResult.FAIL);
+            return;
+        }
         if (!event.getItemStack().is(Items.BUCKET) || day() < 50 || event.getLevel().isClientSide()) {
             return;
         }
@@ -609,6 +683,13 @@ public final class GameplayRules {
     public static void onPearlLand(EntityTeleportEvent.EnderPearl event) {
         if (day() >= 60 && !event.isCanceled()) {
             event.getPlayer().getCooldowns().addCooldown(Items.ENDER_PEARL, DayRules.D60_PEARL_COOLDOWN_TICKS);
+        }
+    }
+
+    /** The powder snow bucket is placed through the block interaction: also forbidden in The Beginning. */
+    public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
+        if (event.getLevel().dimension() == BeginningDimension.LEVEL_KEY && event.getItemStack().getItem() instanceof SolidBucketItem) {
+            event.setUseItem(TriState.FALSE);
         }
     }
 

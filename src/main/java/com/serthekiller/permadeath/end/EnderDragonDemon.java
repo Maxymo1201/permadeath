@@ -20,10 +20,13 @@ import net.minecraft.world.entity.LightningBolt;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
 import net.minecraft.world.entity.item.PrimedTnt;
 import net.minecraft.world.entity.projectile.DragonFireball;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.event.EventHooks;
 
@@ -34,11 +37,16 @@ import java.util.WeakHashMap;
 /**
  * "PERMADEATH DEMON" (Fabric EnderDragonMixin), implemented with entity join/tick events instead of a mixin.
  * <ul>
- *     <li>Every new dragon: 1600 max health, 1000 health, gold bold name (the vanilla boss bar shows it).</li>
- *     <li>≤ 1/6 of its max health: "ENRAGED PERMADEATH DEMON" (faster attacks, other fireball table).</li>
+ *     <li>Every new dragon: 2000 max health and full health (plugin config; Fabric started at 1000/1600), gold
+ *     bold name (the vanilla boss bar shows it).</li>
+ *     <li>≤ 600 HP (plugin EnragedHealth; Fabric 1/6 of its max): "ENRAGED PERMADEATH DEMON" (faster attacks,
+ *     other fireball table).</li>
  *     <li>Perched 200 ticks: 360° spin with eight white clouds every 10 ticks.</li>
- *     <li>Flying, every 1200 ticks (900 enraged): night vision II (48%), TNT circle (34%), lightning storm on a
- *     random player for 10 s (16%), wither skeleton (1%) or endermite (1%).</li>
+ *     <li>Flying, every 1200 ticks (800 enraged, plugin 60 s / 40 s): night vision II (48%), TNT circle (34%),
+ *     lightning storm on a random player for 10 s (16%), wither skeleton (1%) or endermite (1%).</li>
+ *     <li>In the End (plugin EndTask): one lightning bolt per second within 20 blocks of the exit portal, a
+ *     barrage of six power-15 TNT every 30-90 s that does not break the island or hurt the dragon (only when the
+ *     dragon is at least 15 blocks from the portal) and crystals heal half as much.</li>
  *     <li>Extra dragon fireballs while SITTING_ATTACKING with a mob target (as in Fabric; vanilla never sets a
  *     mob target on the dragon, so in practice it does not trigger).</li>
  * </ul>
@@ -49,8 +57,12 @@ public final class EnderDragonDemon {
     public static final String NAME = "PERMADEATH DEMON";
     public static final String ENRAGED_NAME = "ENRAGED PERMADEATH DEMON";
     public static final String DRAGON_SPAWN_TAG = "PermadeathDragonSpawn";
-    private static final double MAX_HEALTH = 1600.0;
-    private static final float START_HEALTH = 1000.0F;
+    public static final String DRAGON_TNT_TAG = "PermadeathDragonTNT";
+    private static final double MAX_HEALTH = 2000.0;
+    private static final float START_HEALTH = 2000.0F;
+    private static final float ENRAGED_HEALTH = 600.0F;
+    private static final double FABRIC_MAX_HEALTH = 1600.0;
+    private static final int[][] TNT_OFFSETS = {{3, -3}, {3, 3}, {3, 0}, {-3, 3}, {-3, -3}, {-3, 0}};
     private static final float SPIN_SPEED = 3.6F;
     private static final int PERCH_TRIGGER_TICKS = 200;
     private static final int LIGHTNING_ATTACK_DURATION = 200;
@@ -70,6 +82,8 @@ public final class EnderDragonDemon {
         int lightningStrikeTimer;
         ServerPlayer lightningTarget;
         int fireballTimer;
+        int tntTimer = 600;
+        float healthBeforeTick;
     }
 
     private static final Map<EnderDragon, State> STATES = new WeakHashMap<>();
@@ -90,8 +104,17 @@ public final class EnderDragonDemon {
             MobUtil.setMaxHealth(dragon, MAX_HEALTH);
             dragon.setHealth(START_HEALTH);
             dragon.setCustomName(name(NAME));
-        } else if (!dragon.hasCustomName()) {
+            return;
+        }
+        if (!dragon.hasCustomName()) {
             dragon.setCustomName(name(NAME));
+        }
+        var maxHealth = dragon.getAttribute(Attributes.MAX_HEALTH);
+        if (maxHealth != null && maxHealth.getBaseValue() == FABRIC_MAX_HEALTH) {
+            // Dragon of an older version (1600 max): raise it to 2000, keeping the damage already dealt.
+            float health = dragon.getHealth();
+            maxHealth.setBaseValue(MAX_HEALTH);
+            dragon.setHealth(health + (float) (MAX_HEALTH - FABRIC_MAX_HEALTH));
         }
     }
 
@@ -119,11 +142,54 @@ public final class EnderDragonDemon {
             return;
         }
         State state = state(dragon);
+        state.healthBeforeTick = dragon.getHealth();
         checkEnraged(dragon, state);
         handleSpinning(dragon, state, level);
         if (!state.spinning) {
             handleFlyingAttacks(dragon, state, level);
             handleExtraFireballs(dragon, state, level);
+        }
+        if (level.dimension() == Level.END && phase(dragon) != EnderDragonPhase.DYING) {
+            if (dragon.tickCount % 20 == 0) {
+                ambientLightning(level);
+            }
+            if (!state.spinning) {
+                tntBarrage(dragon, state, level);
+            }
+        }
+    }
+
+    /** Plugin tickRandomLighting: a real bolt on the surface within 20 blocks of (0, 0). */
+    private static void ambientLightning(ServerLevel level) {
+        RandomSource random = level.getRandom();
+        int x = (random.nextBoolean() ? 1 : -1) * random.nextInt(21);
+        int z = (random.nextBoolean() ? 1 : -1) * random.nextInt(21);
+        int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING, x, z);
+        if (y <= level.getMinBuildHeight()) {
+            return;
+        }
+        LightningBolt bolt = EntityType.LIGHTNING_BOLT.create(level);
+        if (bolt != null) {
+            bolt.moveTo(x + 0.5, y, z + 0.5);
+            level.addFreshEntity(bolt);
+        }
+    }
+
+    /** Plugin tickTnTAttack: six TNT around the dragon every 30-90 s (first after 30 s), fuse 3 s. */
+    private static void tntBarrage(EnderDragon dragon, State state, ServerLevel level) {
+        if (--state.tntTimer > 0) {
+            return;
+        }
+        state.tntTimer = (30 + level.getRandom().nextInt(61)) * 20;
+        BlockPos portal = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING, BlockPos.ZERO);
+        if (dragon.position().distanceTo(Vec3.atCenterOf(portal)) < 15.0) {
+            return;
+        }
+        for (int[] offset : TNT_OFFSETS) {
+            PrimedTnt tnt = new PrimedTnt(level, dragon.getX() + offset[0], dragon.getY(), dragon.getZ() + offset[1], dragon);
+            tnt.setFuse(60);
+            tnt.addTag(DRAGON_TNT_TAG);
+            level.addFreshEntity(tnt);
         }
     }
 
@@ -136,6 +202,11 @@ public final class EnderDragonDemon {
         if (state == null) {
             return;
         }
+        float healed = dragon.getHealth() - state.healthBeforeTick;
+        if (healed > 0.0F && dragon.nearestCrystal != null && dragon.isAlive()) {
+            // Plugin onDragonRegen: crystals heal the demon half as much.
+            dragon.setHealth(dragon.getHealth() - healed / 2.0F);
+        }
         if (state.spinning) {
             performSpin(dragon, state, level);
         }
@@ -145,7 +216,7 @@ public final class EnderDragonDemon {
     }
 
     private static void checkEnraged(EnderDragon dragon, State state) {
-        if (!state.enraged && dragon.getHealth() <= dragon.getMaxHealth() / 6.0F) {
+        if (!state.enraged && dragon.getHealth() <= ENRAGED_HEALTH) {
             state.enraged = true;
             dragon.setCustomName(name(ENRAGED_NAME));
         }
@@ -247,7 +318,7 @@ public final class EnderDragonDemon {
             return;
         }
         state.flyingAttackTimer++;
-        if (state.flyingAttackTimer < (state.enraged ? 900 : 1200)) {
+        if (state.flyingAttackTimer < (state.enraged ? 800 : 1200)) {
             return;
         }
         float roll = level.getRandom().nextFloat();

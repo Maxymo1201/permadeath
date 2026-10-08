@@ -5,23 +5,31 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import com.serthekiller.permadeath.beginning.BeginningEvents;
 import com.serthekiller.permadeath.core.PermadeathCalendar;
 import com.serthekiller.permadeath.core.ProgressionState;
 import com.serthekiller.permadeath.core.TimeFormat;
+import com.serthekiller.permadeath.core.rules.DayRules;
 import com.serthekiller.permadeath.data.BeginningCurseData;
 import com.serthekiller.permadeath.data.CustomMessagesData;
 import com.serthekiller.permadeath.data.PortalState;
 import com.serthekiller.permadeath.data.ServerModeData;
 import com.serthekiller.permadeath.data.SurvivalAchievementData;
+import com.serthekiller.permadeath.items.ArmoredElytra;
 import com.serthekiller.permadeath.mechanics.DeathHandler;
 import com.serthekiller.permadeath.mechanics.DeathTrain;
+import com.serthekiller.permadeath.mechanics.LifeOrb;
 import com.serthekiller.permadeath.mechanics.Mikecrack;
+import com.serthekiller.permadeath.mechanics.ShulkerShellEvent;
+import com.serthekiller.permadeath.mechanics.TotemSystem;
 import com.serthekiller.permadeath.phase.PhaseManager;
 import com.serthekiller.permadeath.progression.DayController;
 import com.serthekiller.permadeath.progression.Permadeath;
+import com.serthekiller.permadeath.registry.ModItems;
 import com.serthekiller.permadeath.util.Texts;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.ClickEvent;
@@ -31,14 +39,19 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.stats.Stats;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.item.ItemStack;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 /**
  * {@code /permadeath} (Fabric PermadeathCommands).
@@ -95,6 +108,21 @@ public final class PermadeathCommands {
                 .then(Commands.literal("maldicion").requires(adminRequire())
                         .then(Commands.argument("jugador", EntityArgument.player()).executes(PermadeathCommands::curse)))
                 .then(Commands.literal("survival").executes(PermadeathCommands::survival))
+                .then(Commands.literal("awake").requires(publicRequire()).executes(PermadeathCommands::awake))
+                .then(Commands.literal("storm").requires(adminRequire())
+                        .then(Commands.literal("addHours").then(Commands.argument("horas", IntegerArgumentType.integer(1, 720))
+                                .executes(ctx -> storm(ctx, true))))
+                        .then(Commands.literal("removeHours").then(Commands.argument("horas", IntegerArgumentType.integer(1, 720))
+                                .executes(ctx -> storm(ctx, false)))))
+                .then(Commands.literal("give").requires(adminRequire())
+                        .then(Commands.argument("item", StringArgumentType.word())
+                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(GIVE_ITEMS.keySet(), builder))
+                                .executes(PermadeathCommands::give)))
+                .then(Commands.literal("bendicion").requires(adminRequire())
+                        .then(Commands.argument("jugador", EntityArgument.player()).executes(PermadeathCommands::blessing)))
+                .then(Commands.literal("event").requires(adminRequire())
+                        .then(Commands.literal("shulkershell").executes(PermadeathCommands::shulkerEvent))
+                        .then(Commands.literal("lifeorb").executes(PermadeathCommands::lifeOrbEvent)))
                 .then(Commands.literal("debug").requires(adminRequire()).executes(PermadeathCommands::debug)));
     }
 
@@ -133,10 +161,15 @@ public final class PermadeathCommands {
                 + "\n§e/permadeath BeginningLocation §7- Coords del portal a The Beginning"
                 + "\n§e/permadeath mensaje <texto> §7- Cambia tu mensaje personal al morir"
                 + "\n§e/permadeath survival §7- Progreso del logro de supervivencia"
+                + "\n§e/permadeath awake §7- Tiempo despierto (contador de phantoms)"
                 + "\n§e/permadeath setday <día> §7- (OP) Cambiar día (0-60, alias: changeday)"
                 + "\n§e/permadeath reload §7- (OP) Reinicia la fase actual"
                 + "\n§e/permadeath reset §7- (OP) Vuelve al día 0"
                 + "\n§e/permadeath resetstorm §7- (OP) Termina la tormenta"
+                + "\n§e/permadeath storm addHours|removeHours <horas> §7- (OP) Administra la tormenta"
+                + "\n§e/permadeath give <objeto> §7- (OP) Objetos de Permadeath (reliquias, Life Orb, medalla, armaduras)"
+                + "\n§e/permadeath bendicion <jugador> §7- (OP) Otorga la bendición de The Beginning"
+                + "\n§e/permadeath event shulkershell|lifeorb §7- (OP) Evento X2 Shulker Shells (4 h) o reinicia el Life Orb"
                 + "\n§e/permadeath mikecrack enable|disable §7- (OP) Cambio de Mikecrack (activo por defecto el día 60)"
                 + "\n§e/permadeath mensaje set <jugador> <texto> §7- (OP) Cambia el mensaje de otro"
                 + "\n§e/permadeath server §7- (OP) Activa/desactiva el modo restringido"
@@ -260,6 +293,105 @@ public final class PermadeathCommands {
         } else {
             reply(ctx, "§a Cambio de Mikecrack DESACTIVADO\n", true);
         }
+        return 1;
+    }
+
+    // ------------------------------------------------------------------------------------------------ plugin commands
+
+    /** Items of /permadeath give (plugin /pdc give), in the plugin order. */
+    private static final Map<String, Supplier<List<ItemStack>>> GIVE_ITEMS = new LinkedHashMap<>();
+
+    static {
+        GIVE_ITEMS.put("medalla", () -> List.of(TotemSystem.createSurvivorMedal()));
+        GIVE_ITEMS.put("netheriteArmor", () -> pieces(ModItems.NETHERITE));
+        GIVE_ITEMS.put("infernalArmor", () -> pieces(ModItems.INFERNAL_NETHERITE));
+        GIVE_ITEMS.put("infernalBlock", () -> List.of(new ItemStack(ModItems.INFERNAL_NETHERITE_BLOCK.get())));
+        GIVE_ITEMS.put("infernalElytra", () -> List.of(ArmoredElytra.create()));
+        GIVE_ITEMS.put("lifeOrb", () -> List.of(new ItemStack(ModItems.LIFE_ORB.get())));
+        GIVE_ITEMS.put("endRelic", () -> List.of(new ItemStack(ModItems.END_RELIC.get())));
+        GIVE_ITEMS.put("beginningRelic", () -> List.of(new ItemStack(ModItems.BEGINNING_RELIC.get())));
+    }
+
+    private static List<ItemStack> pieces(ModItems.ArmorSet set) {
+        return List.of(new ItemStack(set.helmet().get()), new ItemStack(set.chestplate().get()),
+                new ItemStack(set.leggings().get()), new ItemStack(set.boots().get()));
+    }
+
+    private static int awake(CommandContext<CommandSourceStack> ctx) {
+        if (!(ctx.getSource().getEntity() instanceof ServerPlayer player)) {
+            return fail(ctx, "§cEste comando solo puede ser usado por un jugador.");
+        }
+        int seconds = player.getStats().getValue(Stats.CUSTOM.get(Stats.TIME_SINCE_REST)) / 20;
+        long days = seconds / 86400;
+        String time = (days >= 1 ? days + " días " : "")
+                + String.format("%02d:%02d:%02d", seconds % 86400 / 3600, seconds % 3600 / 60, seconds % 60);
+        reply(ctx, "§cPermadeath §7➤ §cTiempo despierto: §7" + time, false);
+        return 1;
+    }
+
+    private static int storm(CommandContext<CommandSourceStack> ctx, boolean add) {
+        if (notRunning(ctx)) {
+            return 0;
+        }
+        MinecraftServer server = ctx.getSource().getServer();
+        long millis = IntegerArgumentType.getInteger(ctx, "horas") * 3_600_000L;
+        if (add) {
+            DeathTrain.addMillis(server, millis);
+        } else if (!DeathTrain.removeMillis(server, millis)) {
+            return fail(ctx, "§cNo hay ninguna tormenta en marcha.");
+        }
+        SurvivalAchievementData.get(server).flagStormResetUsed(server);
+        reply(ctx, "§aOperación completada exitosamente. §7Quedan " + TimeFormat.hms(DeathTrain.remainingMillis()) + " de tormenta.", true);
+        return 1;
+    }
+
+    private static int give(CommandContext<CommandSourceStack> ctx) {
+        if (!(ctx.getSource().getEntity() instanceof ServerPlayer player)) {
+            return fail(ctx, "§cEste comando solo puede ser usado por un jugador.");
+        }
+        String key = StringArgumentType.getString(ctx, "item");
+        Supplier<List<ItemStack>> items = GIVE_ITEMS.get(key);
+        if (items == null) {
+            return fail(ctx, "§cObjeto desconocido. Opciones: §f" + String.join(", ", GIVE_ITEMS.keySet()));
+        }
+        for (ItemStack stack : items.get()) {
+            if (!player.getInventory().add(stack)) {
+                player.drop(stack, false);
+            }
+        }
+        reply(ctx, "§eHas recibido: §f" + key + " §e(comprueba no tener el inventario lleno)", true);
+        return 1;
+    }
+
+    private static int blessing(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        ServerPlayer target = EntityArgument.getPlayer(ctx, "jugador");
+        BeginningEvents.grantBlessing(target);
+        reply(ctx, "§aSe ha otorgado la bendición de The Beginning a §b" + target.getName().getString(), true);
+        return 1;
+    }
+
+    private static int shulkerEvent(CommandContext<CommandSourceStack> ctx) {
+        if (notRunning(ctx)) {
+            return 0;
+        }
+        if (!ShulkerShellEvent.start()) {
+            return fail(ctx, "§cEse evento ya está en ejecución.");
+        }
+        reply(ctx, "§aSe ha iniciado el evento correctamente.", true);
+        return 1;
+    }
+
+    private static int lifeOrbEvent(CommandContext<CommandSourceStack> ctx) {
+        if (notRunning(ctx)) {
+            return 0;
+        }
+        if (Permadeath.day() < DayRules.LIFE_ORB_FROM_DAY) {
+            return fail(ctx, "§cEste evento solo puede ser iniciado a partir del día 60.");
+        }
+        if (!LifeOrb.restartCountdown()) {
+            return fail(ctx, "§cEse evento ya está en ejecución.");
+        }
+        reply(ctx, "§aSe ha iniciado el evento correctamente.", true);
         return 1;
     }
 

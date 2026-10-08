@@ -53,6 +53,9 @@ public final class ProgressionState {
     /** "Cambio de Mikecrack" explicitly disabled with /permadeath mikecrack disable (it is on by default on D60). */
     public boolean mikecrackDisabled;
 
+    /** End of the "X2 Shulker Shells" admin event (epoch ms), 0 when it is not running. */
+    public long shulkerEventEndEpochMillis;
+
     /** Hyper Golden Apple + consumed per player. */
     public final Map<UUID, Integer> hyperApplesConsumed = new HashMap<>();
 

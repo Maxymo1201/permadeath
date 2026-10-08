@@ -19,6 +19,7 @@ import com.serthekiller.permadeath.mechanics.MilkCurse;
 import com.serthekiller.permadeath.mechanics.MobCapController;
 import com.serthekiller.permadeath.mechanics.MushroomSpawn;
 import com.serthekiller.permadeath.mechanics.PlayerHealth;
+import com.serthekiller.permadeath.mechanics.ShulkerShellEvent;
 import com.serthekiller.permadeath.mechanics.TotemSystem;
 import com.serthekiller.permadeath.mechanics.WelcomeMessage;
 import com.serthekiller.permadeath.mechanics.WitherSpawner;
@@ -178,6 +179,7 @@ public final class PermadeathEvents {
         TotemSystem.reset();
         LifeOrb.reset();
         WitherSpawner.reset();
+        ShulkerShellEvent.reset();
         WorldRules.reset();
         ExplodingAnimals.reset();
         BeginningEvents.reset();
@@ -199,6 +201,7 @@ public final class PermadeathEvents {
             LifeOrb.tick(server);
             WitherSpawner.tick(server);
             Mikecrack.tick(server);
+            ShulkerShellEvent.tick(server);
             MilkCurse.tick(server);
             BeginningEvents.onServerTick(server);
             WorldRules.onServerTick(server);
@@ -395,8 +398,12 @@ public final class PermadeathEvents {
     }
 
     private static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
+        if (event.getLevel().isClientSide() || !Permadeath.isRunning()) {
+            return;
+        }
+        GameplayRules.onRightClickBlock(event);
         PhaseHandler handler = phase();
-        if (handler != null && !event.getLevel().isClientSide()) {
+        if (handler != null) {
             handler.onRightClickBlock(event);
         }
     }

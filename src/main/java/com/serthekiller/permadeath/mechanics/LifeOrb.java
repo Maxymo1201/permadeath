@@ -25,7 +25,8 @@ import java.util.UUID;
 
 /**
  * Life Orb (D60): players have 8 real hours from the start of D60 to obtain it; afterwards every survival
- * player without a Life Orb in the inventory loses 16 max HP (3 s grace when it is lost).
+ * player without a Life Orb in the inventory loses 16 max HP (3 s grace when it is lost). The countdown can be
+ * restarted with {@code /permadeath event lifeorb} (plugin /pdc event lifeorb).
  *
  * <p>The deadline is an absolute timestamp. In REAL30 it is the instant D60 begins + 8 h, so the countdown also
  * runs while the server is stopped; in GAME60 D60 is a world-time event, so the 8 real hours start when the
@@ -144,14 +145,30 @@ public final class LifeOrb {
                 continue;
             }
             GRACE.remove(player.getUUID());
-            PlayerHealth.sync(health, PlayerHealth.LIFE_ORB_PENALTY, -DayRules.LIFE_ORB_PENALTY_HP, false);
-            float resulting = player.getHealth() - (float) DayRules.LIFE_ORB_PENALTY_HP;
-            if (resulting <= 0.0F) {
-                player.hurt(player.damageSources().genericKill(), Float.MAX_VALUE);
-            } else if (player.getHealth() > resulting) {
-                player.setHealth(resulting);
+            // Only the maximum drops by 16 (plugin setupHealth). The modifier is saved with the player, so a relog
+            // or a restart does not apply it again; Fabric used a transient modifier and also took 16 current HP,
+            // which killed the player on the next login.
+            PlayerHealth.sync(health, PlayerHealth.LIFE_ORB_PENALTY, -DayRules.LIFE_ORB_PENALTY_HP, true);
+            if (player.getHealth() > player.getMaxHealth()) {
+                player.setHealth(player.getMaxHealth());
             }
         }
+    }
+
+    /**
+     * Restarts the 8 h countdown on D60 (the penalty is lifted while it runs).
+     * @return false when it is already running
+     */
+    public static boolean restartCountdown() {
+        ProgressionState state = Permadeath.state();
+        if (!state.lifeOrbActive && state.lifeOrbDeadlineEpochMillis > 0L) {
+            return false;
+        }
+        state.lifeOrbActive = false;
+        state.lifeOrbDeadlineEpochMillis = Permadeath.nowMillis() + DayRules.LIFE_ORB_COUNTDOWN_MILLIS;
+        state.markChanged();
+        lastActive = false;
+        return true;
     }
 
     public static boolean hasLifeOrb(ServerPlayer player) {

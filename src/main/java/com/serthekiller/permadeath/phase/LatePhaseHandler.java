@@ -55,17 +55,14 @@ import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
-import java.util.UUID;
 
 /**
  * Behaviour shared by the D40-49, D50-59 and D60 handlers (the three Fabric classes were copies of each other
  * with different numbers). Subclasses supply the numbers and the phase-only rules.
  */
 public abstract class LatePhaseHandler implements PhaseHandler {
-    private final Set<UUID> processedEndermen = new HashSet<>();
+    private static final String HOSTILE_ENDERMAN_TAG = "permadeath:hostile_enderman";
     private int mobPassCooldown;
 
     protected abstract SkeletonClasses.Tier tier();
@@ -88,7 +85,6 @@ public abstract class LatePhaseHandler implements PhaseHandler {
 
     @Override
     public void onPhaseEnd(ServerLevel overworld) {
-        processedEndermen.clear();
         mobPassCooldown = 0;
         for (ServerPlayer player : overworld.getServer().getPlayerList().getPlayers()) {
             LockedSlots.clear(player);
@@ -118,10 +114,17 @@ public abstract class LatePhaseHandler implements PhaseHandler {
             return;
         }
         if (living instanceof EnderMan enderman) {
-            if (!enderman.isRemoved() && level.random.nextFloat() < 0.2F) {
-                enderman.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(enderman, Player.class, true));
+            // Plugin: 1 % of the endermen outside the End hunt players (Fabric: 20 %, End included). Goals are not
+            // saved, so the roll result is kept as a tag and the goal re-added on every load.
+            if (level.dimension() != Level.END && !enderman.isRemoved()) {
+                if (MobTracking.tryClaim(enderman, "enderman_hostile_roll") && level.random.nextInt(100) == 0) {
+                    enderman.addTag(HOSTILE_ENDERMAN_TAG);
+                }
+                if (enderman.getTags().contains(HOSTILE_ENDERMAN_TAG)) {
+                    enderman.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(enderman, Player.class, true));
+                }
             }
-            if (level.dimension() == Level.END && handleEndEnderman(enderman, level)) {
+            if (level.dimension() == Level.END && handleEndEnderman(enderman, level, loadedFromDisk)) {
                 return;
             }
             if (level.dimension() == Level.NETHER) {
@@ -198,30 +201,9 @@ public abstract class LatePhaseHandler implements PhaseHandler {
         return false;
     }
 
-    /** End endermen: 11% Ender Creeper, 4% Ender Ghast while the dragon is dead. */
-    private boolean handleEndEnderman(EnderMan enderman, ServerLevel level) {
-        if (enderman.isRemoved() || processedEndermen.contains(enderman.getUUID())) {
-            return enderman.isRemoved();
-        }
-        int chance = level.random.nextInt(100);
-        if (chance <= 10) {
-            Creeper creeper = new Creeper(EntityType.CREEPER, level);
-            creeper.setCustomName(Component.literal(enderCreeperName()));
-            creeper.setPos(enderman.getX(), enderman.getY(), enderman.getZ());
-            level.addFreshEntity(creeper);
-            enderman.discard();
-            return true;
-        }
-        if (chance < 15) {
-            if (!EnderMobs.isDragonAlive(level)) {
-                EnderMobs.spawnEnderGhast(level, enderman.getX(), enderman.getY() + 3.0, enderman.getZ());
-                enderman.discard();
-                return true;
-            }
-        } else {
-            processedEndermen.add(enderman.getUUID());
-        }
-        return false;
+    /** End endermen: see {@link Day30to39Handler#endEndermanRoll}. */
+    private boolean handleEndEnderman(EnderMan enderman, ServerLevel level, boolean loadedFromDisk) {
+        return Day30to39Handler.endEndermanRoll(enderman, level, loadedFromDisk, enderCreeperName());
     }
 
     // ----------------------------------------------------------------------------------------------- damage

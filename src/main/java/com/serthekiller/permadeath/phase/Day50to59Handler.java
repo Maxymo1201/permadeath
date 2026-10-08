@@ -2,6 +2,7 @@ package com.serthekiller.permadeath.phase;
 
 import com.serthekiller.permadeath.beginning.BeginningDimension;
 import com.serthekiller.permadeath.core.rules.DayRules;
+import com.serthekiller.permadeath.mechanics.GameplayRules;
 import com.serthekiller.permadeath.mechanics.MushroomSpawn;
 import com.serthekiller.permadeath.mobs.BeginningMobs;
 import com.serthekiller.permadeath.mobs.EnderMobs;
@@ -30,6 +31,7 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.entity.animal.IronGolem;
 import net.minecraft.world.entity.animal.Pufferfish;
 import net.minecraft.world.entity.monster.Blaze;
@@ -135,8 +137,20 @@ public final class Day50to59Handler extends LatePhaseHandler {
                 creeper.addEffect(new MobEffectInstance(MobEffects.INVISIBILITY, MobUtil.INFINITE, 0, false, false));
                 if (level.dimension() == BeginningDimension.LEVEL_KEY) {
                     creeper.setCustomName(Component.literal(EnderMobs.ENDER_QUANTUM_CREEPER_NAME));
+                    beginningCreeper(creeper);
                 }
             }
+        }
+    }
+
+    /**
+     * Natural creepers of The Beginning (plugin spawnBeginningMob): 100 HP and explosion radius 7 instead of the
+     * radius 20 of the other Quantum Creepers.
+     */
+    static void beginningCreeper(Creeper creeper) {
+        if (creeper.getSpawnType() == MobSpawnType.NATURAL) {
+            creeper.addTag(GameplayRules.BEGINNING_CREEPER_TAG);
+            MobUtil.setMaxHealth(creeper, 100.0);
         }
     }
 

@@ -1,5 +1,6 @@
 package com.serthekiller.permadeath.phase;
 
+import com.serthekiller.permadeath.beginning.BeginningDimension;
 import com.serthekiller.permadeath.mechanics.MushroomSpawn;
 import com.serthekiller.permadeath.mobs.BeginningMobs;
 import com.serthekiller.permadeath.mobs.EnderMobs;
@@ -127,6 +128,9 @@ public final class Day60Handler extends LatePhaseHandler {
     protected void handleCreeper(Creeper creeper, ServerLevel level) {
         if (MobTracking.tryClaim(creeper, "creeper_variant_d60")) {
             creeper.setCustomName(Component.literal(EnderMobs.ENDER_QUANTUM_CREEPER_NAME));
+            if (level.dimension() == BeginningDimension.LEVEL_KEY) {
+                Day50to59Handler.beginningCreeper(creeper);
+            }
         }
         creeper.addEffect(new MobEffectInstance(MobEffects.INVISIBILITY, MobUtil.INFINITE, 0, false, false));
     }

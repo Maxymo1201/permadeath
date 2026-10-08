@@ -23,8 +23,10 @@ import net.minecraft.world.level.GameRules;
  * depend on TPS and keeps running while the server is stopped (Fabric counted server ticks and saved them in
  * permadeath_storm.txt).
  *
- * <p>While it lasts: permanent thunderstorm in the Overworld, a timer in the action bar, D25+ mob buffs
- * (Strength/Resistance/Speed every second), D50+ no natural regeneration ("modo UHC").</p>
+ * <p>While it lasts: permanent thunderstorm in the Overworld, a timer in the action bar, D50+ no natural
+ * regeneration ("modo UHC"). From D25 every death gives every mob alive Strength, Resistance and Speed (I, II
+ * from D50) and, on D50-59, Fire Resistance, for the rest of its life, and mobs spawning during the storm get
+ * them too (plugin deathTrainEffects, infinite duration; Fabric refreshed them only while the storm lasted).</p>
  */
 public final class DeathTrain {
     private static long tickCounter;
@@ -55,6 +57,15 @@ public final class DeathTrain {
         state.deathTrainEndEpochMillis = base + added;
         state.markChanged();
         applyWeather(server.overworld(), state.deathTrainEndEpochMillis - now);
+        if (DayRules.deathTrainBuffAmplifier(day) >= 0) {
+            for (ServerLevel level : server.getAllLevels()) {
+                for (Entity entity : level.getAllEntities()) {
+                    if (entity instanceof Mob mob && mob.isAlive()) {
+                        applyBuffs(mob, day);
+                    }
+                }
+            }
+        }
         PermadeathMod.LOGGER.info("[Permadeath] Death Train +{} (day {}), ends at {}", TimeFormat.realDuration(java.time.Duration.ofMillis(added)), day,
                 TimeFormat.utc(java.time.Instant.ofEpochMilli(state.deathTrainEndEpochMillis)));
         return added;
@@ -92,10 +103,6 @@ public final class DeathTrain {
                 for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                     player.displayClientMessage(timer, true);
                 }
-                int amplifier = DayRules.deathTrainBuffAmplifier(day);
-                if (amplifier >= 0) {
-                    buffMobs(server, amplifier, DayRules.deathTrainFireResistance(day));
-                }
             }
             return;
         }
@@ -111,20 +118,40 @@ public final class DeathTrain {
         PermadeathMod.LOGGER.info("[Permadeath] Death Train finished");
     }
 
-    /** Strength/Resistance/Speed for every mob while the storm lasts, plus Fire Resistance on D50-59 (plugin). */
-    private static void buffMobs(MinecraftServer server, int amplifier, boolean fireResistance) {
-        for (ServerLevel level : server.getAllLevels()) {
-            for (Entity entity : level.getAllEntities()) {
-                if (entity instanceof Mob mob && mob.isAlive()) {
-                    mob.addEffect(new MobEffectInstance(MobEffects.DAMAGE_BOOST, 60, amplifier, false, true));
-                    mob.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, 60, amplifier, false, true));
-                    mob.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, 60, amplifier, false, true));
-                    if (fireResistance) {
-                        mob.addEffect(new MobEffectInstance(MobEffects.FIRE_RESISTANCE, 60, 0, false, true));
-                    }
-                }
-            }
+    /** Permanent Death Train buffs of one mob (plugin deathTrainEffects): nothing before D25. */
+    public static void applyBuffs(Mob mob, int day) {
+        int amplifier = DayRules.deathTrainBuffAmplifier(day);
+        if (amplifier < 0) {
+            return;
         }
+        mob.addEffect(new MobEffectInstance(MobEffects.DAMAGE_BOOST, MobEffectInstance.INFINITE_DURATION, amplifier, false, true));
+        mob.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, MobEffectInstance.INFINITE_DURATION, amplifier, false, true));
+        mob.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, MobEffectInstance.INFINITE_DURATION, amplifier, false, true));
+        if (DayRules.deathTrainFireResistance(day)) {
+            mob.addEffect(new MobEffectInstance(MobEffects.FIRE_RESISTANCE, MobEffectInstance.INFINITE_DURATION, 0, false, true));
+        }
+    }
+
+    /** /permadeath storm addHours: extends the running storm or starts one. */
+    public static void addMillis(MinecraftServer server, long millis) {
+        ProgressionState state = Permadeath.state();
+        long now = Permadeath.nowMillis();
+        state.deathTrainEndEpochMillis = Math.max(now, state.deathTrainEndEpochMillis) + millis;
+        state.markChanged();
+        applyWeather(server.overworld(), state.deathTrainEndEpochMillis - now);
+    }
+
+    /** /permadeath storm removeHours: shortens the running storm (it lasts at least 1 more second). */
+    public static boolean removeMillis(MinecraftServer server, long millis) {
+        if (!isActive()) {
+            return false;
+        }
+        ProgressionState state = Permadeath.state();
+        long now = Permadeath.nowMillis();
+        state.deathTrainEndEpochMillis = Math.max(now + 1000L, state.deathTrainEndEpochMillis - millis);
+        state.markChanged();
+        applyWeather(server.overworld(), state.deathTrainEndEpochMillis - now);
+        return true;
     }
 
     /** /permadeath resetstorm and /permadeath reset. */
