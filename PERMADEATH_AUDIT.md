@@ -9,8 +9,8 @@ Fuentes comparadas:
 * **PermaDeathCore**: el plugin histórico. Tiene prioridad cuando el jar es ambiguo o contradictorio.
 * **Permadeath 1.3** (SebazCRC, `Permadeath-1.3.jar` y su código fuente `Permadeath-master`): la edición más
   reciente del mismo plugin. Se comparó subsistema por subsistema con el port; los cambios que salieron de esa
-  comparación están en §5. Solo se aplicaron diferencias que **las dos ediciones del plugin** confirman (o que
-  corrigen un fallo del port), respetando las correcciones obligatorias de §1.
+  comparación están en §5. Solo se aplicaron reglas explícitas en el código del plugin (casi todas idénticas en
+  PermaDeathCore) o que corrigen un fallo del port, respetando las correcciones obligatorias de §1.
 * **Port**: código de este repositorio.
 
 Leyenda: ✔ igual que Fabric · ✚ corrección · ≈ diferencia menor documentada · ✖ no portado (justificado).
@@ -206,7 +206,7 @@ el doble de mobs empieza en el D10, aunque el plugin use otros valores.
 
 ### Jugador
 
-| Regla | Plugin (ambas ediciones) | Antes (Fabric / port) | Ahora | Test |
+| Regla | Plugin | Antes (Fabric / port) | Ahora | Test |
 |---|---|---|---|---|
 | Golpe de ahogamiento | 5 (D50-59), 10 (D60) | 2 (vanilla) | `LivingDrownEvent` con 5/10 | `RulesTest`, GameTests `drowningHitDealsFiveOnD50` / `TenOnD60` |
 | Levitación aleatoria D50+ | 1/10000 cada segundo, solo bajo la lluvia a cielo abierto, 3-19 s | 1/10000 por tick también de noche, bajo techo y bajo tierra | Regla del plugin | `RulesTest` |
