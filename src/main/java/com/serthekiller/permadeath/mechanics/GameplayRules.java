@@ -1,6 +1,7 @@
 package com.serthekiller.permadeath.mechanics;
 
 import com.serthekiller.permadeath.beginning.BeginningDimension;
+import com.serthekiller.permadeath.core.rules.DayRules;
 import com.serthekiller.permadeath.data.SurvivalAchievementData;
 import com.serthekiller.permadeath.mobs.EnderMobs;
 import com.serthekiller.permadeath.mobs.SpecialMobs;
@@ -42,7 +43,6 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.LargeFireball;
 import net.minecraft.world.entity.projectile.LlamaSpit;
 import net.minecraft.world.entity.projectile.ShulkerBullet;
-import net.minecraft.world.entity.projectile.ThrownEnderpearl;
 import net.minecraft.world.entity.projectile.WitherSkull;
 import net.minecraft.world.entity.vehicle.AbstractMinecart;
 import net.minecraft.world.item.ItemStack;
@@ -89,6 +89,8 @@ public final class GameplayRules {
     public static final String PERMADEATH_TNT = "PermadeathTNT";
     public static final String DARK_HEARTS = "DarkHearts";
     public static final String LIGHTNING_CLOUD = "LightningCloud";
+    /** Ender Creeper born from a D40+ Nether enderman: its explosion turns the crater into magma (plugin). */
+    public static final String NETHER_CREEPER_TAG = "permadeath:nether_creeper";
 
     private static final String[] CHEAT_PREFIXES = {"gamemode", "gm", "give", "clear", "effect", "xp", "experience", "enchant",
             "attribute", "data merge entity", "summon", "setblock", "fill", "clone", "spreadplayers"};
@@ -266,11 +268,6 @@ public final class GameplayRules {
             event.setCanceled(true);
             return;
         }
-        if (entity instanceof ThrownEnderpearl pearl && day() >= 60 && pearl.getOwner() instanceof ServerPlayer player
-                && !event.loadedFromDisk()) {
-            // EnderPearlCooldownMixin: D60 doubles the ender pearl cooldown (20 → 40 ticks).
-            player.getCooldowns().addCooldown(Items.ENDER_PEARL, 40);
-        }
         if (entity instanceof LargeFireball fireball && fireball.getOwner() instanceof Ghast ghast && !event.loadedFromDisk()) {
             ghastFireballPower(fireball, ghast);
         }
@@ -292,7 +289,8 @@ public final class GameplayRules {
         }
         String name = ghast.getCustomName().getString();
         if (name.contains("Demoníaco")) {
-            fireball.explosionPower = 3 + ghast.level().getRandom().nextInt(3);
+            // Plugin: power 6 from D50 (and in the End), 3-5 before.
+            fireball.explosionPower = day() >= 50 || ghast.level().dimension() == Level.END ? 6 : 3 + ghast.level().getRandom().nextInt(3);
         } else if (name.contains("Ender Ghast")) {
             fireball.explosionPower = 6;
         } else if (name.contains("Demonio Flotante") || name.contains("ghast feliz")) {
@@ -316,9 +314,23 @@ public final class GameplayRules {
                 && cloud.position().distanceToSqr(lastCreeperExplosion) < 1.0E-4;
     }
 
-    /** ExplosionMixin: explosions never break blocks in The Beginning. */
+    /**
+     * ExplosionMixin: explosions never break blocks in The Beginning. The Nether Ender Creeper (plugin
+     * "nether_creeper") turns every block it would destroy into magma instead, bedrock excepted.
+     */
     public static void onExplosionDetonate(ExplosionEvent.Detonate event) {
         if (event.getLevel().dimension() == BeginningDimension.LEVEL_KEY) {
+            event.getAffectedBlocks().clear();
+            return;
+        }
+        if (event.getExplosion().getDirectSourceEntity() instanceof Creeper creeper && creeper.getTags().contains(NETHER_CREEPER_TAG)) {
+            Level level = event.getLevel();
+            for (BlockPos pos : event.getAffectedBlocks()) {
+                var state = level.getBlockState(pos);
+                if (!state.isAir() && !state.is(Blocks.BEDROCK)) {
+                    level.setBlockAndUpdate(pos, Blocks.MAGMA_BLOCK.defaultBlockState());
+                }
+            }
             event.getAffectedBlocks().clear();
         }
     }
@@ -446,11 +458,12 @@ public final class GameplayRules {
             living.setDeltaMovement(living.getDeltaMovement().add(dir.x * 1.2, 0.4, dir.z * 1.2));
             living.hurtMarked = true;
         } else if (projectile instanceof LargeFireball fireball && hit instanceof EntityHitResult entityHit
-                && entityHit.getEntity() instanceof Player player && fireball.getOwner() instanceof Ghast ghast
+                && entityHit.getEntity() instanceof LivingEntity living && fireball.getOwner() instanceof Ghast ghast
                 && MobUtil.nameContains(ghast, "Demonio Flotante")) {
-            // LargeFireballMinix#onHitPlayer
-            player.addEffect(new MobEffectInstance(MobEffects.LEVITATION, 400, 49));
-            player.addEffect(new MobEffectInstance(MobEffects.WITHER, 400, 4));
+            // LargeFireballMinix#onHitPlayer, with the plugin numbers: Levitation L for 5 s (Fabric 20 s) and
+            // Wither V for 20 s, on any living entity (Fabric: players only).
+            living.addEffect(new MobEffectInstance(MobEffects.LEVITATION, 100, 49));
+            living.addEffect(new MobEffectInstance(MobEffects.WITHER, 400, 4));
         }
     }
 
@@ -478,20 +491,21 @@ public final class GameplayRules {
     }
 
     /**
-     * MixinLivingEntityFatigue#clearStatusEffects: from D50 milk and totems do not remove Mining Fatigue, Hunger
-     * or Poison.
+     * From D50 milk does not remove Mining Fatigue (plugin: it is re-applied after drinking). Fabric
+     * (MixinLivingEntityFatigue) also kept Hunger and Poison against milk and totems, which made the infinite
+     * food poisons below incurable; in the plugin milk cures them.
      */
     public static void onEffectRemove(MobEffectEvent.Remove event) {
         if (day() < 50 || event.getCure() == null) {
             return;
         }
-        if ((event.getCure() == EffectCures.MILK || event.getCure() == EffectCures.PROTECTED_BY_TOTEM) && isPreserved(event.getEffect())) {
+        if (event.getCure() == EffectCures.MILK && isPreserved(event.getEffect())) {
             event.setCanceled(true);
         }
     }
 
     private static boolean isPreserved(Holder<MobEffect> effect) {
-        return effect == MobEffects.DIG_SLOWDOWN || effect == MobEffects.HUNGER || effect == MobEffects.POISON;
+        return effect == MobEffects.DIG_SLOWDOWN;
     }
 
     private static void clearEffectsPreserving(LivingEntity entity) {
@@ -506,38 +520,42 @@ public final class GameplayRules {
         }
     }
 
-    /** MixinPlayerFoodEffects: harmful foods (D50+) and pumpkin pie (saturation D50-59, harm D60). */
+    /**
+     * Harmful foods from D50 with the plugin table (Fabric MixinPlayerFoodEffects used other amplifiers): the
+     * vanilla effect is replaced by an infinite one - spider eye Poison I, rotten flesh Hunger II, poisonous
+     * potato Poison I, pufferfish Poison IV + Hunger III + Nausea II. Pumpkin pie gives Saturation 5 s from D50
+     * and also Instant Damage IV on D60.
+     */
     public static void onFinishUsingItem(LivingEntityUseItemEvent.Finish event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) {
             return;
         }
         ItemStack item = event.getItem();
         int d = day();
-        if (item.is(Items.PUMPKIN_PIE)) {
-            if (d >= 60) {
-                player.addEffect(new MobEffectInstance(MobEffects.HARM, 1, 3));
-            } else if (d >= 50) {
-                player.addEffect(new MobEffectInstance(MobEffects.SATURATION, 100, 0, false, true));
-            }
-            return;
-        }
         if (d < 50) {
             return;
         }
-        if (item.is(Items.SPIDER_EYE)) {
-            player.addEffect(new MobEffectInstance(MobEffects.POISON, MobUtil.INFINITE, 0, false, true));
-            player.addEffect(new MobEffectInstance(MobEffects.CONFUSION, MobUtil.INFINITE, 0, false, true));
+        if (item.is(Items.PUMPKIN_PIE)) {
+            player.addEffect(new MobEffectInstance(MobEffects.SATURATION, 100, 0, false, true));
+            if (d >= 60) {
+                player.addEffect(new MobEffectInstance(MobEffects.HARM, 1, 3));
+            }
+        } else if (item.is(Items.SPIDER_EYE)) {
+            replaceWithInfinite(player, MobEffects.POISON, 0);
         } else if (item.is(Items.ROTTEN_FLESH)) {
-            player.addEffect(new MobEffectInstance(MobEffects.HUNGER, MobUtil.INFINITE, 0, false, true));
-            player.addEffect(new MobEffectInstance(MobEffects.WEAKNESS, MobUtil.INFINITE, 0, false, true));
+            replaceWithInfinite(player, MobEffects.HUNGER, 1);
         } else if (item.is(Items.POISONOUS_POTATO)) {
-            player.addEffect(new MobEffectInstance(MobEffects.POISON, MobUtil.INFINITE, 1, false, true));
-            player.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, MobUtil.INFINITE, 0, false, true));
+            replaceWithInfinite(player, MobEffects.POISON, 0);
         } else if (item.is(Items.PUFFERFISH)) {
-            player.addEffect(new MobEffectInstance(MobEffects.CONFUSION, MobUtil.INFINITE, 0, false, true));
-            player.addEffect(new MobEffectInstance(MobEffects.POISON, MobUtil.INFINITE, 1, false, true));
-            player.addEffect(new MobEffectInstance(MobEffects.HUNGER, MobUtil.INFINITE, 1, false, true));
+            replaceWithInfinite(player, MobEffects.POISON, 3);
+            replaceWithInfinite(player, MobEffects.HUNGER, 2);
+            replaceWithInfinite(player, MobEffects.CONFUSION, 1);
         }
+    }
+
+    private static void replaceWithInfinite(ServerPlayer player, Holder<MobEffect> effect, int amplifier) {
+        player.removeEffect(effect);
+        player.addEffect(new MobEffectInstance(effect, MobUtil.INFINITE, amplifier, false, true));
     }
 
     // =========================================================================== players
@@ -581,6 +599,16 @@ public final class GameplayRules {
                 event.setCanceled(true);
                 event.setCancellationResult(InteractionResult.FAIL);
             }
+        }
+    }
+
+    /**
+     * D60: when an ender pearl lands the thrower cannot use another one for 6 s (plugin PlayerTeleportEvent;
+     * Fabric EnderPearlCooldownMixin doubled the throw cooldown to 2 s instead).
+     */
+    public static void onPearlLand(EntityTeleportEvent.EnderPearl event) {
+        if (day() >= 60 && !event.isCanceled()) {
+            event.getPlayer().getCooldowns().addCooldown(Items.ENDER_PEARL, DayRules.D60_PEARL_COOLDOWN_TICKS);
         }
     }
 

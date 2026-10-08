@@ -13,6 +13,7 @@ import com.serthekiller.permadeath.mechanics.DeathHandler;
 import com.serthekiller.permadeath.mechanics.DeathTrain;
 import com.serthekiller.permadeath.mechanics.GameplayRules;
 import com.serthekiller.permadeath.mechanics.LifeOrb;
+import com.serthekiller.permadeath.mechanics.LockedSlots;
 import com.serthekiller.permadeath.mechanics.Mikecrack;
 import com.serthekiller.permadeath.mechanics.MilkCurse;
 import com.serthekiller.permadeath.mechanics.MobCapController;
@@ -60,10 +61,12 @@ import net.neoforged.neoforge.event.entity.living.LivingDropsEvent;
 import net.neoforged.neoforge.event.entity.living.LivingEntityUseItemEvent;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.entity.living.LivingShieldBlockEvent;
+import net.neoforged.neoforge.event.entity.living.LivingSwapItemsEvent;
 import net.neoforged.neoforge.event.entity.living.LivingUseTotemEvent;
 import net.neoforged.neoforge.event.entity.living.MobEffectEvent;
 import net.neoforged.neoforge.event.entity.living.MobSpawnEvent;
 import net.neoforged.neoforge.event.entity.player.CanPlayerSleepEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerContainerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
@@ -110,10 +113,12 @@ public final class PermadeathEvents {
         serverOnly(bus, MobEffectEvent.Remove.class, GameplayRules::onEffectRemove);
         serverOnly(bus, LivingEntityUseItemEvent.Finish.class, GameplayRules::onFinishUsingItem);
         serverOnly(bus, EntityTeleportEvent.EnderEntity.class, GameplayRules::onEnderTeleport);
+        serverOnly(bus, EntityTeleportEvent.EnderPearl.class, GameplayRules::onPearlLand);
         bus.addListener(PermadeathEvents::onSpawnPlacementCheck);
         bus.addListener(PermadeathEvents::onProjectileImpact);
         serverOnly(bus, LivingUseTotemEvent.class, TotemSystem::onUseTotem);
         bus.addListener(WorldRules::onBreathe);
+        bus.addListener(WorldRules::onDrown);
         serverOnly(bus, EntityTravelToDimensionEvent.class, EndAccess::onTravelToDimension);
         bus.addListener(PermadeathEvents::onExplosionStart);
         bus.addListener(PermadeathEvents::onExplosionDetonate);
@@ -128,6 +133,9 @@ public final class PermadeathEvents {
         bus.addListener(PermadeathEvents::onRightClickBlock);
         bus.addListener(PermadeathEvents::onRightClickItem);
         bus.addListener(PermadeathEvents::onItemCrafted);
+        bus.addListener(DeathHandler::onItemPickup);
+        serverOnly(bus, LivingSwapItemsEvent.Hands.class, LockedSlots::onSwapHands);
+        serverOnly(bus, PlayerContainerEvent.Close.class, LockedSlots::onContainerClose);
         bus.addListener(PermadeathEvents::onCommand);
     }
 
@@ -297,7 +305,7 @@ public final class PermadeathEvents {
             return;
         }
         if (entity instanceof ServerPlayer player) {
-            DeathHandler.onPlayerDeath(player);
+            DeathHandler.onPlayerDeath(player, event.getSource());
         }
         GameplayRules.onDeath(entity);
         PhaseHandler handler = phase();
@@ -322,7 +330,6 @@ public final class PermadeathEvents {
             return;
         }
         GameplayRules.onSpawnPlacementCheck(event);
-        Mikecrack.onSpawnPlacementCheck(event);
     }
 
     private static void onProjectileImpact(ProjectileImpactEvent event) {

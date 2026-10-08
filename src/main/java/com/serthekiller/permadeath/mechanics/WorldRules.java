@@ -10,6 +10,7 @@ import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.level.GameRules;
 import net.neoforged.neoforge.event.entity.living.LivingBreatheEvent;
+import net.neoforged.neoforge.event.entity.living.LivingDrownEvent;
 
 /**
  * Global rules that depend only on the day.
@@ -17,6 +18,8 @@ import net.neoforged.neoforge.event.entity.living.LivingBreatheEvent;
  *     <li>Drowning: from D50 the air lost under water is the vanilla amount x5 (D50-59) or x10 (D60). Vanilla
  *     decides the base amount, so Respiration (which skips ticks) and Water Breathing / Conduit Power (no
  *     consumption at all) keep working. Fabric subtracted a fixed extra 5/19 air per tick.</li>
+ *     <li>Drowning damage: from D50 each drowning hit on a player deals 5 (D50-59) or 10 (D60) instead of 2
+ *     (Permadeath plugin, both editions; Fabric only changed the air).</li>
  *     <li>Death Train rain: players in the Overworld under rain with open sky get Blindness for 60 s with
  *     probability 1/10000 per tick on D40-49 and 1/5000 from D50 (Fabric used 1/7500 on D50-59, nothing on
  *     D60 and 1/5000 only after D60).</li>
@@ -41,6 +44,16 @@ public final class WorldRules {
         int scaled = DayRules.scaledAirConsumption(event.getConsumeAirAmount(), Permadeath.day());
         if (scaled != event.getConsumeAirAmount()) {
             event.setConsumeAirAmount(scaled);
+        }
+    }
+
+    public static void onDrown(LivingDrownEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer) || !Permadeath.isRunning()) {
+            return;
+        }
+        float damage = DayRules.drowningDamage(Permadeath.day());
+        if (damage > 0.0F) {
+            event.setDamageAmount(damage);
         }
     }
 

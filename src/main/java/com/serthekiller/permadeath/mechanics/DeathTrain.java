@@ -94,7 +94,7 @@ public final class DeathTrain {
                 }
                 int amplifier = DayRules.deathTrainBuffAmplifier(day);
                 if (amplifier >= 0) {
-                    buffMobs(server, amplifier);
+                    buffMobs(server, amplifier, DayRules.deathTrainFireResistance(day));
                 }
             }
             return;
@@ -111,13 +111,17 @@ public final class DeathTrain {
         PermadeathMod.LOGGER.info("[Permadeath] Death Train finished");
     }
 
-    private static void buffMobs(MinecraftServer server, int amplifier) {
+    /** Strength/Resistance/Speed for every mob while the storm lasts, plus Fire Resistance on D50-59 (plugin). */
+    private static void buffMobs(MinecraftServer server, int amplifier, boolean fireResistance) {
         for (ServerLevel level : server.getAllLevels()) {
             for (Entity entity : level.getAllEntities()) {
                 if (entity instanceof Mob mob && mob.isAlive()) {
                     mob.addEffect(new MobEffectInstance(MobEffects.DAMAGE_BOOST, 60, amplifier, false, true));
                     mob.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, 60, amplifier, false, true));
                     mob.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, 60, amplifier, false, true));
+                    if (fireResistance) {
+                        mob.addEffect(new MobEffectInstance(MobEffects.FIRE_RESISTANCE, 60, 0, false, true));
+                    }
                 }
             }
         }

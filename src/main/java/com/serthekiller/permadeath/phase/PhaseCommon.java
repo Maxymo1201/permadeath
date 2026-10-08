@@ -1,6 +1,7 @@
 package com.serthekiller.permadeath.phase;
 
 import com.serthekiller.permadeath.beginning.BeginningDimension;
+import com.serthekiller.permadeath.core.rules.DayRules;
 import com.serthekiller.permadeath.mobs.HostileMobConverter;
 import com.serthekiller.permadeath.mobs.MobTracking;
 import com.serthekiller.permadeath.mobs.SpecialMobs;
@@ -17,6 +18,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.stats.Stats;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
@@ -79,12 +81,14 @@ public final class PhaseCommon {
 
     // ------------------------------------------------------------------------------------------ beds (D20+)
 
-    public enum PhantomReset { ALWAYS_SILENT, ALWAYS_WITH_MESSAGE, ELEVEN_PERCENT }
+    public enum PhantomReset { ALWAYS_WITH_MESSAGE, TEN_PERCENT }
 
     /**
-     * D20+: beds never let the player sleep. They "explode" harmlessly (particle + sound) and may reset the
-     * phantom counter. Fabric reset an unrelated internal sleep timer; the counter that spawns phantoms is
-     * the {@link Stats#TIME_SINCE_REST} statistic, which is what is reset here.
+     * D20+: beds never let the player sleep. They "explode" harmlessly (particle + sound) and reset the
+     * phantom counter (always on D20-49, 10 % from D50, with a message, as in the plugin; Fabric reset it
+     * silently on D20-29 and used "nextInt(100) &lt;= 10", 11 %, from D50). Fabric reset an unrelated internal
+     * sleep timer; the counter that spawns phantoms is the {@link Stats#TIME_SINCE_REST} statistic, which is
+     * what is reset here.
      */
     public static void denySleep(CanPlayerSleepEvent event, PhantomReset reset) {
         if (!(event.getEntity() instanceof ServerPlayer player)) {
@@ -95,14 +99,12 @@ public final class PhaseCommon {
         level.sendParticles(ParticleTypes.EXPLOSION_EMITTER, pos.getX() + 0.5, pos.getY() + 1, pos.getZ() + 0.5, 1, 0.0, 0.0, 0.0, 0.0);
         level.playSound(null, pos.getX(), pos.getY(), pos.getZ(), SoundEvents.GENERIC_EXPLODE, SoundSource.BLOCKS, 1.0F, 1.0F);
         boolean doReset = switch (reset) {
-            case ALWAYS_SILENT, ALWAYS_WITH_MESSAGE -> true;
-            case ELEVEN_PERCENT -> level.random.nextInt(100) <= 10;
+            case ALWAYS_WITH_MESSAGE -> true;
+            case TEN_PERCENT -> level.random.nextInt(100) < DayRules.D50_PHANTOM_RESET_PERCENT;
         };
         if (doReset) {
             player.resetStat(Stats.CUSTOM.get(Stats.TIME_SINCE_REST));
-            if (reset != PhantomReset.ALWAYS_SILENT) {
-                player.displayClientMessage(Component.literal("[PERMADEATH] Contador de phantoms reiniciado").withStyle(ChatFormatting.RED), false);
-            }
+            player.displayClientMessage(Component.literal("[PERMADEATH] Contador de phantoms reiniciado").withStyle(ChatFormatting.RED), false);
         }
         event.setProblem(Player.BedSleepingProblem.OTHER_PROBLEM);
     }
@@ -121,14 +123,22 @@ public final class PhaseCommon {
     }
 
     /**
-     * D20+ phantoms: size 9 and double health. Fabric re-applied this on every load (health doubled again after
-     * each restart); it is applied once per phantom.
+     * D20+ phantoms: size 9 (18 from D50, plugin) and double health. Fabric re-applied this on every load (health
+     * doubled again after each restart); it is applied once per phantom. Phantoms enlarged before D50 grow to 18
+     * once when they are loaded on D50+.
      */
     public static boolean enlargePhantom(Phantom phantom) {
+        int size = DayRules.phantomSize(Permadeath.day());
         if (!MobTracking.tryClaim(phantom, "phantom_giant")) {
+            if (size > 9 && phantom.getPhantomSize() < size && MobTracking.tryClaim(phantom, "phantom_giant_d50")) {
+                phantom.setPhantomSize(size);
+            }
             return false;
         }
-        phantom.setPhantomSize(9);
+        if (size > 9) {
+            MobTracking.markProcessed(phantom, "phantom_giant_d50");
+        }
+        phantom.setPhantomSize(size);
         MobUtil.multiplyMaxHealth(phantom, 2.0);
         return true;
     }
@@ -141,18 +151,31 @@ public final class PhaseCommon {
         HostileMobConverter.convertToHostile(entity);
     }
 
+    private static final String[] RAVAGER_NO_TOTEM = {
+            "Vaya que mala suerte, ese ravager no tenia nada :(",
+            "¡Porras... otro ravager sin suerte!",
+            "Nada... hoy no hay totem :(",
+            "¡Hoy no es tu día!"
+    };
+
     /**
-     * Ravager totem drop: 1% before D25, 20% from D25 (Fabric used "day + 1 &gt;= 25" and "&lt;= 20" on 0-99,
-     * i.e. 21% from D24).
+     * D20-39 ravager totem drop: 1% before D25, 20% from D25 (Fabric used "day + 1 &gt;= 25" and "&lt;= 20" on 0-99,
+     * i.e. 21% from D24). As in the plugin, only ravagers killed by a player roll, and the killer is told the
+     * result ("¡Un tótem!" or one of the four plugin lines).
      */
-    public static void ravagerTotemDrop(LivingEntity entity, ServerLevel level) {
-        if (!(entity instanceof Ravager)) {
+    public static void ravagerTotemDrop(LivingEntity entity, DamageSource source, ServerLevel level) {
+        if (!(entity instanceof Ravager) || !(source.getEntity() instanceof ServerPlayer killer)) {
             return;
         }
         int roll = level.random.nextInt(100);
         int chance = Permadeath.day() >= 25 ? 20 : 1;
         if (roll < chance) {
             level.addFreshEntity(new ItemEntity(level, entity.getX(), entity.getY(), entity.getZ(), new ItemStack(Items.TOTEM_OF_UNDYING)));
+            killer.sendSystemMessage(Component.literal("¡Un tótem!").withStyle(ChatFormatting.YELLOW));
+            level.playSound(null, killer.blockPosition(), SoundEvents.PLAYER_LEVELUP, SoundSource.PLAYERS, 1.0F, 1.0F);
+        } else {
+            killer.sendSystemMessage(Component.literal(RAVAGER_NO_TOTEM[level.random.nextInt(RAVAGER_NO_TOTEM.length)])
+                    .withStyle(ChatFormatting.RED));
         }
     }
 
@@ -184,11 +207,16 @@ public final class PhaseCommon {
         }
     }
 
-    /** D50+: soul sand / soul soil slow the player (Slowness II 1 s at D50, Slowness III 3 s at D60). */
+    /**
+     * D50+: soul sand / soul soil slow the player (Fabric: Slowness II 1 s at D50, Slowness III 3 s at D60). On D60
+     * soul sand leaves Slowness III for 30 s, as in the plugin.
+     */
     public static void soulSandSlowness(ServerPlayer player, boolean d60) {
         ServerLevel level = player.serverLevel();
         var below = level.getBlockState(player.getOnPos());
-        if (below.is(Blocks.SOUL_SAND) || below.is(Blocks.SOUL_SOIL)) {
+        if (d60 && below.is(Blocks.SOUL_SAND)) {
+            player.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, DayRules.D60_SOUL_SAND_SLOWNESS_TICKS, 2, false, true));
+        } else if (below.is(Blocks.SOUL_SAND) || below.is(Blocks.SOUL_SOIL)) {
             player.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, d60 ? 60 : 20, d60 ? 2 : 1, false, true));
         }
     }
@@ -201,16 +229,20 @@ public final class PhaseCommon {
         }
     }
 
-    /** D50+: 1/10000 per tick at night or under rain in the Overworld: Levitation I for 3-20 s. */
+    /**
+     * D50+: a player in the rain under open sky in the Overworld gets Levitation I for 3-19 s with probability
+     * 1/10000 every second (plugin player loop). Fabric rolled 1/10000 every tick also at night, indoors and
+     * underground included.
+     */
     public static void randomLevitation(ServerPlayer player) {
         Level level = player.level();
-        if (level.dimension() != Level.OVERWORLD) {
+        if (level.dimension() != Level.OVERWORLD || player.isSpectator()
+                || player.tickCount % DayRules.RANDOM_LEVITATION_PERIOD_TICKS != 0) {
             return;
         }
-        boolean night = !level.isDay();
-        boolean rain = level.isRaining() && level.canSeeSky(player.blockPosition());
-        if ((night || rain) && level.random.nextInt(10000) == 0) {
-            player.addEffect(new MobEffectInstance(MobEffects.LEVITATION, 60 + level.random.nextInt(341), 0, false, true));
+        if (level.isRaining() && level.canSeeSky(player.blockPosition())
+                && level.random.nextInt(DayRules.RANDOM_LEVITATION_ONE_IN) == 0) {
+            player.addEffect(new MobEffectInstance(MobEffects.LEVITATION, DayRules.randomLevitationTicks(level.random.nextInt(17)), 0, false, true));
         }
     }
 

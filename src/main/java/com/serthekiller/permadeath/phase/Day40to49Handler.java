@@ -101,16 +101,8 @@ public final class Day40to49Handler extends LatePhaseHandler {
                 MobUtil.name(zp, "§6Pigman Full Diamante");
             }
         } else if (entity instanceof Piglin piglin) {
-            if (!MobTracking.tryClaim(piglin, "piglin_outcome_d40_49")) {
-                return;
-            }
-            if (level.random.nextInt(100) <= 20) {
-                Ravager ravager = new Ravager(EntityType.RAVAGER, level);
-                ravager.setPos(piglin.getX(), piglin.getY(), piglin.getZ());
-                SpecialMobs.setupUltraRavagerStack(ravager, level);
-                level.addFreshEntity(ravager);
-                piglin.discard();
-            } else {
+            // The Ultra Ravager stack now comes from the pigman classes (plugin), not from 21 % of the piglins.
+            if (MobTracking.tryClaim(piglin, "piglin_outcome_d40_49")) {
                 MobUtil.equipArmor(piglin, new ItemStack(Items.GOLDEN_HELMET), new ItemStack(Items.GOLDEN_CHESTPLATE),
                         new ItemStack(Items.GOLDEN_LEGGINGS), new ItemStack(Items.GOLDEN_BOOTS));
                 MobUtil.name(piglin, "§6Piglin Full Oro");
@@ -132,12 +124,19 @@ public final class Day40to49Handler extends LatePhaseHandler {
             maxHealth.setBaseValue(52.0);
             witch.setHealth(52.0F);
         }
+        if (!witch.hasCustomName()) {
+            MobUtil.name(witch, "§6Bruja Imposible");
+        }
         witch.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, MobUtil.INFINITE, 1, false, true));
         MobGoals.ensureImpossibleWitch(witch);
     }
 
     @Override
     protected boolean handleDamage(LivingEntity entity, DamageSource source) {
+        if (EnderMobs.isEnderCreeper(entity) && EnderMobs.isDodgeableEnderCreeper(source)) {
+            EnderMobs.dodgeWithTeleport(entity);
+            return true;
+        }
         if (entity instanceof Creeper creeper && entity.level().dimension() == Level.END && EnderMobs.isDodgeableD40(source)) {
             EnderMobs.dodgeWithTeleport(creeper);
             return true;

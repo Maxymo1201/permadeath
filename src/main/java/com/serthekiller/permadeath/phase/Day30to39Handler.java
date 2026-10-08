@@ -123,6 +123,7 @@ public final class Day30to39Handler implements PhaseHandler {
             }
         }
         applyEffects(living, level);
+        SpecialMobs.buffEarlyRavager(living);
         insertEffect(living, level);
         SpecialMobs.transformGiantMobs(living, level);
         if (living instanceof Phantom phantom) {
@@ -211,8 +212,7 @@ public final class Day30to39Handler implements PhaseHandler {
 
     @Override
     public void onDeath(LivingEntity entity, DamageSource source, ServerLevel level) {
-        SpecialMobs.handleGiantMobArmorDrops(entity, level);
-        PhaseCommon.ravagerTotemDrop(entity, level);
+        PhaseCommon.ravagerTotemDrop(entity, source, level);
     }
 
     @Override

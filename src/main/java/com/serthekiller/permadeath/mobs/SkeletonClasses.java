@@ -34,7 +34,11 @@ public final class SkeletonClasses {
     public static final String CLASSED_KEY = "skeleton_class";
     private static final int LEATHER_COLOR = 11546150;
     private static final int SCIENTIFIC_ARROW_COLOR = 8366264;
+    /** Científico arrows: 3 min of each effect (plugin; Fabric 18 s). */
+    private static final int SCIENTIFIC_EFFECT_TICKS = 3 * 60 * 20;
     private static final int DEMONIC_ARROW_COLOR = 8454016;
+    /** Armour drop chance of the class skeletons (plugin 0.8; leather, custom netherite and D60 sets 0). */
+    private static final float ARMOR_DROP = 0.8F;
     public static final String DEMONIC_SKELETON_TAG = "DemonicSkeleton";
 
     private SkeletonClasses() {
@@ -80,51 +84,61 @@ public final class SkeletonClasses {
 
     // ------------------------------------------------------------------------------------------- D20-29
 
-    /** D20-29 spider jockeys (Fabric Day20to29Handler#addSkeletonRider). */
+    /** D20-29 spider jockeys: a new skeleton with a D20 class rides the spider. */
     public static void addD20Rider(Entity spider, ServerLevel level) {
-        int type = level.random.nextInt(5);
-        AbstractSkeleton rider;
-        switch (type) {
-            case 0 -> {
-                Skeleton s = new Skeleton(EntityType.SKELETON, level);
-                armor(s, Items.DIAMOND_HELMET, Items.DIAMOND_CHESTPLATE, Items.DIAMOND_LEGGINGS, Items.DIAMOND_BOOTS);
-                s.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.BOW));
-                MobUtil.setMaxHealth(s, 20.0);
-                rider = s;
-            }
-            case 1 -> {
-                WitherSkeleton s = new WitherSkeleton(EntityType.WITHER_SKELETON, level);
-                s.setItemSlot(EquipmentSlot.MAINHAND, MobUtil.enchanted(level, new ItemStack(Items.BOW), ench(Enchantments.PUNCH, 20)));
-                armor(s, Items.CHAINMAIL_HELMET, Items.CHAINMAIL_CHESTPLATE, Items.CHAINMAIL_LEGGINGS, Items.CHAINMAIL_BOOTS);
-                MobUtil.setMaxHealth(s, 40.0);
-                rider = s;
-            }
+        Skeleton skeleton = new Skeleton(EntityType.SKELETON, level);
+        skeleton.setPos(spider.getX(), spider.getY(), spider.getZ());
+        applyD20Class(skeleton, level, spider);
+    }
+
+    /**
+     * D20-29 classes (plugin spawnSkeletonClass, also applied to every natural skeleton - Fabric only classed the
+     * spider riders): roll nextInt(6) - 0-1 diamond + bow (20 HP), 2 wither skeleton with chainmail and a Punch XX
+     * bow (40 HP), 3 iron + Fire Aspect II iron axe (20 HP), 4 gold + Sharpness XX crossbow (40 HP), 5 wither
+     * skeleton with red leather and a Power X bow (40 HP). Armour drops 80 % (leather 0 %), weapons never drop.
+     */
+    public static void applyD20Class(Skeleton skeleton, ServerLevel level, @Nullable Entity vehicle) {
+        MobTracking.markProcessed(skeleton, CLASSED_KEY);
+        boolean fresh = vehicle != null && !skeleton.isAddedToLevel();
+        switch (level.random.nextInt(6)) {
             case 2 -> {
-                Skeleton s = new Skeleton(EntityType.SKELETON, level);
-                s.setItemSlot(EquipmentSlot.MAINHAND, MobUtil.enchanted(level, new ItemStack(Items.IRON_AXE), ench(Enchantments.FIRE_ASPECT, 2)));
-                armor(s, Items.IRON_HELMET, Items.IRON_CHESTPLATE, Items.IRON_LEGGINGS, Items.IRON_BOOTS);
-                MobUtil.setMaxHealth(s, 20.0);
-                rider = s;
+                WitherSkeleton wither = replaceWithWitherSkeleton(skeleton, level);
+                wither.setItemSlot(EquipmentSlot.MAINHAND, MobUtil.enchanted(level, new ItemStack(Items.BOW), ench(Enchantments.PUNCH, 20)));
+                armor(wither, Items.CHAINMAIL_HELMET, Items.CHAINMAIL_CHESTPLATE, Items.CHAINMAIL_LEGGINGS, Items.CHAINMAIL_BOOTS);
+                MobUtil.setMaxHealth(wither, 40.0);
+                MobUtil.dropChances(wither, ARMOR_DROP, 0.0F);
+                spawnReplacement(wither, skeleton, level, vehicle, true);
             }
             case 3 -> {
-                Skeleton s = new Skeleton(EntityType.SKELETON, level);
-                s.setItemSlot(EquipmentSlot.MAINHAND, MobUtil.enchanted(level, new ItemStack(Items.CROSSBOW), ench(Enchantments.SHARPNESS, 20)));
-                armor(s, Items.GOLDEN_HELMET, Items.GOLDEN_CHESTPLATE, Items.GOLDEN_LEGGINGS, Items.GOLDEN_BOOTS);
-                MobUtil.setMaxHealth(s, 40.0);
-                rider = s;
+                skeleton.setItemSlot(EquipmentSlot.MAINHAND, MobUtil.enchanted(level, new ItemStack(Items.IRON_AXE), ench(Enchantments.FIRE_ASPECT, 2)));
+                armor(skeleton, Items.IRON_HELMET, Items.IRON_CHESTPLATE, Items.IRON_LEGGINGS, Items.IRON_BOOTS);
+                MobUtil.setMaxHealth(skeleton, 20.0);
+                MobUtil.dropChances(skeleton, ARMOR_DROP, 0.0F);
+                mount(skeleton, level, vehicle, fresh);
+            }
+            case 4 -> {
+                skeleton.setItemSlot(EquipmentSlot.MAINHAND, MobUtil.enchanted(level, new ItemStack(Items.CROSSBOW), ench(Enchantments.SHARPNESS, 20)));
+                armor(skeleton, Items.GOLDEN_HELMET, Items.GOLDEN_CHESTPLATE, Items.GOLDEN_LEGGINGS, Items.GOLDEN_BOOTS);
+                MobUtil.setMaxHealth(skeleton, 40.0);
+                MobUtil.dropChances(skeleton, ARMOR_DROP, 0.0F);
+                mount(skeleton, level, vehicle, fresh);
+            }
+            case 5 -> {
+                WitherSkeleton wither = replaceWithWitherSkeleton(skeleton, level);
+                wither.setItemSlot(EquipmentSlot.MAINHAND, MobUtil.enchanted(level, new ItemStack(Items.BOW), ench(Enchantments.POWER, 10)));
+                leatherArmor(wither);
+                MobUtil.setMaxHealth(wither, 40.0);
+                MobUtil.dropChances(wither, 0.0F, 0.0F);
+                spawnReplacement(wither, skeleton, level, vehicle, true);
             }
             default -> {
-                WitherSkeleton s = new WitherSkeleton(EntityType.WITHER_SKELETON, level);
-                s.setItemSlot(EquipmentSlot.MAINHAND, MobUtil.enchanted(level, new ItemStack(Items.BOW), ench(Enchantments.POWER, 10)));
-                leatherArmor(s);
-                MobUtil.setMaxHealth(s, 40.0);
-                rider = s;
+                armor(skeleton, Items.DIAMOND_HELMET, Items.DIAMOND_CHESTPLATE, Items.DIAMOND_LEGGINGS, Items.DIAMOND_BOOTS);
+                skeleton.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.BOW));
+                MobUtil.setMaxHealth(skeleton, 20.0);
+                MobUtil.dropChances(skeleton, ARMOR_DROP, 0.0F);
+                mount(skeleton, level, vehicle, fresh);
             }
         }
-        MobTracking.markProcessed(rider, CLASSED_KEY);
-        rider.setPos(spider.getX(), spider.getY(), spider.getZ());
-        level.addFreshEntity(rider);
-        rider.startRiding(spider);
     }
 
     // ------------------------------------------------------------------------------------------- D30+
@@ -139,33 +153,20 @@ public final class SkeletonClasses {
         MobTracking.markProcessed(skeleton, tier.classKey());
         Entity actualVehicle = vehicle != null ? vehicle : skeleton.getVehicle();
         boolean fresh = vehicle != null && !skeleton.isAddedToLevel();
-        if (tier == Tier.D60) {
-            int roll = level.random.nextInt(99);
-            if (roll < 14) {
-                warrior(skeleton, level, actualVehicle, fresh, tier);
-            } else if (roll < 28) {
-                tactical(skeleton, level, actualVehicle, tier);
-            } else if (roll < 42) {
-                infernal(skeleton, level, actualVehicle, fresh, tier);
-            } else if (roll < 56) {
-                assassin(skeleton, level, actualVehicle, fresh, tier);
-            } else if (roll < 70) {
-                nightmare(skeleton, level, actualVehicle, tier);
-            } else if (roll < 84) {
-                scientific(skeleton, level, actualVehicle, fresh);
-            } else if (roll < 98) {
-                demonic(skeleton, level, actualVehicle, fresh);
-            } else {
-                definitive(skeleton, level, vehicle);
-            }
+        // Plugin odds: D60 first 1/101 Definitivo, then nextInt(8) (warrior 2/8, the other six 1/8 each);
+        // D30-59 nextInt(6) (warrior 2/6). Fabric used equal odds and 1/99 for the Definitivo.
+        if (tier == Tier.D60 && level.random.nextInt(101) == 1) {
+            definitive(skeleton, level, vehicle);
             return;
         }
-        switch (level.random.nextInt(5)) {
-            case 0 -> warrior(skeleton, level, actualVehicle, fresh, tier);
-            case 1 -> tactical(skeleton, level, actualVehicle, tier);
-            case 2 -> infernal(skeleton, level, actualVehicle, fresh, tier);
-            case 3 -> assassin(skeleton, level, actualVehicle, fresh, tier);
-            default -> nightmare(skeleton, level, actualVehicle, tier);
+        switch (level.random.nextInt(tier == Tier.D60 ? 8 : 6)) {
+            case 2 -> tactical(skeleton, level, actualVehicle, tier);
+            case 3 -> infernal(skeleton, level, actualVehicle, fresh, tier);
+            case 4 -> assassin(skeleton, level, actualVehicle, fresh, tier);
+            case 5 -> nightmare(skeleton, level, actualVehicle, tier);
+            case 6 -> demonic(skeleton, level, actualVehicle, fresh);
+            case 7 -> scientific(skeleton, level, actualVehicle, fresh);
+            default -> warrior(skeleton, level, actualVehicle, fresh, tier);
         }
     }
 
@@ -196,6 +197,7 @@ public final class SkeletonClasses {
         skeleton.setItemSlot(EquipmentSlot.MAINHAND, bow);
         skeleton.setItemSlot(EquipmentSlot.OFFHAND, MobUtil.harmingArrow(1, MobUtil.HARMING_COLOR));
         MobUtil.setMaxHealth(skeleton, tier == Tier.D50 || tier == Tier.D60 ? 100.0 : 40.0);
+        MobUtil.dropChances(skeleton, tier == Tier.D60 ? 0.0F : ARMOR_DROP, 0.0F);
         skeleton.setCustomName(Component.literal(name("Guerrero", tier)));
         mount(skeleton, level, vehicle, fresh);
     }
@@ -222,6 +224,7 @@ public final class SkeletonClasses {
         armor(wither, Items.CHAINMAIL_HELMET, Items.CHAINMAIL_CHESTPLATE, Items.CHAINMAIL_LEGGINGS, Items.CHAINMAIL_BOOTS);
         wither.setItemSlot(EquipmentSlot.OFFHAND, MobUtil.harmingArrow(1, MobUtil.HARMING_COLOR));
         MobUtil.setMaxHealth(wither, tier == Tier.D60 ? 60.0 : 40.0);
+        MobUtil.dropChances(wither, ARMOR_DROP, 0.0F);
         wither.setCustomName(Component.literal(name("Táctico", tier)));
         spawnReplacement(wither, skeleton, level, vehicle, tier != Tier.D30);
     }
@@ -236,6 +239,7 @@ public final class SkeletonClasses {
         armor(skeleton, Items.IRON_HELMET, Items.IRON_CHESTPLATE, Items.IRON_LEGGINGS, Items.IRON_BOOTS);
         skeleton.setItemSlot(EquipmentSlot.OFFHAND, MobUtil.harmingArrow(1, MobUtil.HARMING_COLOR));
         MobUtil.setMaxHealth(skeleton, tier == Tier.D60 ? 100.0 : 40.0);
+        MobUtil.dropChances(skeleton, ARMOR_DROP, 0.0F);
         skeleton.setCustomName(Component.literal(name("Infernal", tier)));
         mount(skeleton, level, vehicle, fresh);
     }
@@ -251,6 +255,7 @@ public final class SkeletonClasses {
         skeleton.setItemSlot(EquipmentSlot.OFFHAND, MobUtil.harmingArrow(1, MobUtil.HARMING_COLOR));
         skeleton.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, MobUtil.INFINITE, tier == Tier.D60 ? 3 : 1, false, true));
         MobUtil.setMaxHealth(skeleton, tier == Tier.D60 ? 60.0 : 40.0);
+        MobUtil.dropChances(skeleton, ARMOR_DROP, 0.0F);
         skeleton.setCustomName(Component.literal(name("Asesino", tier)));
         mount(skeleton, level, vehicle, fresh);
     }
@@ -265,7 +270,8 @@ public final class SkeletonClasses {
         wither.setItemSlot(EquipmentSlot.MAINHAND, MobUtil.enchanted(level, new ItemStack(Items.BOW), ench(Enchantments.POWER, power)));
         leatherArmor(wither);
         wither.setItemSlot(EquipmentSlot.OFFHAND, MobUtil.harmingArrow(1, MobUtil.HARMING_COLOR));
-        MobUtil.setMaxHealth(wither, 40.0);
+        MobUtil.setMaxHealth(wither, tier == Tier.D60 ? 60.0 : 40.0);
+        MobUtil.dropChances(wither, 0.0F, 0.0F);
         wither.setCustomName(Component.literal(name("Pesadilla", tier)));
         spawnReplacement(wither, skeleton, level, vehicle, tier != Tier.D30);
     }
@@ -275,12 +281,13 @@ public final class SkeletonClasses {
         skeleton.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.BOW));
         ItemStack arrow = new ItemStack(Items.TIPPED_ARROW);
         arrow.set(DataComponents.POTION_CONTENTS, new PotionContents(Optional.empty(), Optional.of(SCIENTIFIC_ARROW_COLOR), List.of(
-                new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 360, 2),
-                new MobEffectInstance(MobEffects.WEAKNESS, 360, 0),
-                new MobEffectInstance(MobEffects.GLOWING, 360, 0),
-                new MobEffectInstance(MobEffects.POISON, 360, 2))));
+                new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, SCIENTIFIC_EFFECT_TICKS, 2),
+                new MobEffectInstance(MobEffects.WEAKNESS, SCIENTIFIC_EFFECT_TICKS, 0),
+                new MobEffectInstance(MobEffects.GLOWING, SCIENTIFIC_EFFECT_TICKS, 0),
+                new MobEffectInstance(MobEffects.POISON, SCIENTIFIC_EFFECT_TICKS, 2))));
         skeleton.setItemSlot(EquipmentSlot.OFFHAND, arrow);
         MobUtil.setMaxHealth(skeleton, 100.0);
+        MobUtil.dropChances(skeleton, 0.0F, 0.0F);
         skeleton.setCustomName(Component.literal("§6Ultra Esqueleto Científico"));
         mount(skeleton, level, vehicle, fresh);
     }
@@ -292,6 +299,7 @@ public final class SkeletonClasses {
         skeleton.addTag(DEMONIC_SKELETON_TAG);
         skeleton.setCustomName(Component.literal("§6Ultra Esqueleto Demoníaco"));
         MobUtil.setMaxHealth(skeleton, 100.0);
+        MobUtil.dropChances(skeleton, 0.0F, 0.0F);
         mount(skeleton, level, vehicle, fresh);
     }
 
@@ -300,6 +308,10 @@ public final class SkeletonClasses {
         // Power 32765 in the jar; enchantment levels are capped at 255 by ItemEnchantments (same as Fabric).
         wither.setItemSlot(EquipmentSlot.MAINHAND, MobUtil.enchanted(level, new ItemStack(Items.BOW), ench(Enchantments.POWER, 32765)));
         MobUtil.setMaxHealth(wither, 400.0);
+        MobUtil.dropChances(wither, 0.0F, 0.0F);
+        // Plugin: Speed II and never despawns.
+        wither.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, MobUtil.INFINITE, 1, false, true));
+        wither.setPersistenceRequired();
         wither.setCustomName(Component.literal("§6Ultra Esqueleto Definitivo"));
         spawnReplacement(wither, skeleton, level, vehicle, true);
     }

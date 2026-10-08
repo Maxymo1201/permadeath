@@ -1,6 +1,7 @@
 package com.serthekiller.permadeath.mobs;
 
 import com.serthekiller.permadeath.PermadeathMod;
+import com.serthekiller.permadeath.core.rules.DayRules;
 import com.serthekiller.permadeath.progression.Permadeath;
 import com.serthekiller.permadeath.util.MobUtil;
 import net.minecraft.server.level.ServerLevel;
@@ -46,6 +47,7 @@ import net.minecraft.world.entity.monster.Silverfish;
 import net.minecraft.world.entity.monster.ZombifiedPiglin;
 import net.minecraft.world.entity.monster.piglin.Piglin;
 import net.minecraft.world.entity.monster.Ravager;
+import net.minecraft.world.entity.animal.IronGolem;
 import net.minecraft.world.entity.animal.Pig;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -64,6 +66,8 @@ import java.util.Set;
  */
 public final class HostileMobConverter {
     private static final double BASE_ATTACK_DAMAGE = 3.0;
+    /** Base hit of the "Bacalao de la muerte" before its Sharpness 50 / Knockback 100 weapon (audited value). */
+    private static final double COD_BASE_DAMAGE = BASE_ATTACK_DAMAGE;
     private static final String SESSION_KEY = "hostile_convert";
 
     private HostileMobConverter() {
@@ -102,7 +106,14 @@ public final class HostileMobConverter {
     }
 
     public static void convertToHostile(LivingEntity entity) {
-        if (!isConvertible(entity) || Permadeath.day() < 20) {
+        if (Permadeath.day() < 20) {
+            return;
+        }
+        if (entity instanceof IronGolem golem) {
+            villageGolem(golem);
+            return;
+        }
+        if (!isConvertible(entity)) {
             return;
         }
         if (entity.getType() == EntityType.BAT && entity instanceof Bat bat) {
@@ -135,6 +146,18 @@ public final class HostileMobConverter {
         }
     }
 
+    /**
+     * D20+: iron golems also hunt players (plugin HostileEntityListener gives every non-hostile mob a player
+     * target; Fabric skipped golems). Golems built by players stay friendly: vanilla
+     * {@link IronGolem#canAttackType} refuses players for them. Goals are not saved, so this runs once per load.
+     */
+    private static void villageGolem(IronGolem golem) {
+        if (golem.getTags().contains(ExplodingAnimals.GALACTIC_GOLEM_TAG) || !MobTracking.tryClaimSession(golem, SESSION_KEY)) {
+            return;
+        }
+        golem.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(golem, Player.class, true));
+    }
+
     /** D40+: farm animals become Ravagers; D50+: Ultra Ravagers and chickens become silverfish. */
     public static boolean convertToRavager(LivingEntity entity, ServerLevel level) {
         int day = Permadeath.day();
@@ -156,11 +179,7 @@ public final class HostileMobConverter {
             } else {
                 Ravager ravager = new Ravager(EntityType.RAVAGER, level);
                 ravager.moveTo(entity.getX(), entity.getY(), entity.getZ(), entity.getYRot(), entity.getXRot());
-                MobUtil.setMaxHealth(ravager, 500.0);
-                ravager.setCustomName(Component.literal("Ultra Ravager").withStyle(ChatFormatting.GOLD));
-                ravager.setCustomNameVisible(false);
-                ravager.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, MobUtil.INFINITE, 1, false, false));
-                ravager.addEffect(new MobEffectInstance(MobEffects.DAMAGE_BOOST, MobUtil.INFINITE, 1, false, false));
+                SpecialMobs.makeGoldUltraRavager(ravager);
                 level.addFreshEntity(ravager);
             }
             entity.discard();
@@ -278,13 +297,12 @@ public final class HostileMobConverter {
         }
     }
 
+    /**
+     * Mobs that already have an attack attribute keep their vanilla damage (plugin; Fabric lowered every one to 3,
+     * hoglins and pandas included).
+     */
     private static boolean setupAttackAttributes(PathfinderMob mob) {
-        AttributeInstance attack = mob.getAttribute(Attributes.ATTACK_DAMAGE);
-        if (attack != null) {
-            attack.setBaseValue(BASE_ATTACK_DAMAGE);
-            return true;
-        }
-        return false;
+        return mob.getAttribute(Attributes.ATTACK_DAMAGE) != null;
     }
 
     private static void clearPacificGoals(PathfinderMob mob) {
@@ -302,11 +320,13 @@ public final class HostileMobConverter {
     private static void injectHostileGoals(PathfinderMob mob, boolean hasAttackDamage) {
         if (mob instanceof Cod && Permadeath.day() >= 50) {
             // "Bacalao de la muerte": a single melee goal hitting like a Sharpness 50 / Knockback 100 weapon.
-            mob.goalSelector.addGoal(1, new CustomMeleeAttackGoal(mob, 1.2, false, BASE_ATTACK_DAMAGE));
+            mob.goalSelector.addGoal(1, new CustomMeleeAttackGoal(mob, 1.2, false, COD_BASE_DAMAGE));
+            MobUtil.name(mob, "§6Bacalao de la Muerte");
         } else if (hasAttackDamage) {
             mob.goalSelector.addGoal(1, new MeleeAttackGoal(mob, 1.2, false));
         } else {
-            mob.goalSelector.addGoal(1, new CustomMeleeAttackGoal(mob, 1.2, false, BASE_ATTACK_DAMAGE));
+            // Plugin: mobs without an attack attribute (cows, villagers, horses...) hit for 8 (Fabric 3).
+            mob.goalSelector.addGoal(1, new CustomMeleeAttackGoal(mob, 1.2, false, DayRules.HOSTILE_PASSIVE_ATTACK_DAMAGE));
         }
         mob.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(mob, Player.class, 10, true, false, null));
         mob.targetSelector.addGoal(2, new HurtByTargetGoal(mob));

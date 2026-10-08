@@ -1,5 +1,7 @@
 package com.serthekiller.permadeath.mobs;
 
+import com.serthekiller.permadeath.core.rules.DayRules;
+import com.serthekiller.permadeath.progression.Permadeath;
 import com.serthekiller.permadeath.registry.ModItems;
 import com.serthekiller.permadeath.util.MobUtil;
 import net.minecraft.ChatFormatting;
@@ -17,12 +19,14 @@ import net.minecraft.world.entity.animal.Bee;
 import net.minecraft.world.entity.animal.Pig;
 import net.minecraft.world.entity.monster.Ghast;
 import net.minecraft.world.entity.monster.MagmaCube;
+import net.minecraft.world.entity.monster.Ravager;
 import net.minecraft.world.entity.monster.ZombifiedPiglin;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.event.EventHooks;
 
 /**
- * D40-59 pigman jockeys (Fabric handleClassPigman): 31% of the zombified piglins get a mount and a class.
+ * D40-59 pigman classes (Fabric handleClassPigman with the plugin odds): 5/99 of the zombified piglins on
+ * D40-49 and 20/99 on D50-59 get a class - the Ultra Ravager stack or a mount (pig, bee, ghast, magma cube).
  */
 public final class PigmanClasses {
     public static final String GHAST_MOUNT_TAG = "ghast_pig_mount";
@@ -46,15 +50,26 @@ public final class PigmanClasses {
                 || MobTracking.isProcessed(pigman, outcomeKey) || pigman.getTags().contains(SpecialMobs.CARLOS_PIGMAN)) {
             return;
         }
-        if (pigman.getRandom().nextInt(100) > 30) {
+        // Plugin: a class with nextInt(99) + 1 <= 5 (D40-49) or 20 (D50-59); Fabric used 31 % on both.
+        if (pigman.getRandom().nextInt(99) + 1 > DayRules.pigmanClassChance(Permadeath.day())) {
             return;
         }
         MobTracking.markProcessed(pigman, outcomeKey);
         Mob mount;
         String classTag;
         String customName;
-        switch (pigman.getRandom().nextInt(4)) {
+        switch (pigman.getRandom().nextInt(5)) {
             case 0 -> {
+                // Plugin class 1: the Ultra Ravager stack spawns instead of the pigman (Fabric made 21 % of the
+                // piglins into stacks).
+                Ravager ravager = new Ravager(EntityType.RAVAGER, level);
+                ravager.moveTo(pigman.getX(), pigman.getY(), pigman.getZ(), pigman.getYRot(), 0.0F);
+                SpecialMobs.setupUltraRavagerStack(ravager, level);
+                level.addFreshEntity(ravager);
+                pigman.discard();
+                return;
+            }
+            case 1 -> {
                 mount = new Pig(EntityType.PIG, level);
                 mount.setCustomName(Component.literal("Tony el cerdo").withStyle(ChatFormatting.DARK_PURPLE));
                 classTag = "pink_pig";
@@ -63,7 +78,7 @@ public final class PigmanClasses {
                         new ItemStack(ModItems.PINK_NETHERITE_LEGGINGS.get()), new ItemStack(ModItems.PINK_NETHERITE_BOOTS.get()));
                 MobUtil.setBase(pigman, Attributes.ATTACK_DAMAGE, 20.0);
             }
-            case 1 -> {
+            case 2 -> {
                 mount = new Bee(EntityType.BEE, level);
                 var maxHealth = mount.getAttribute(Attributes.MAX_HEALTH);
                 if (maxHealth != null && maxHealth.getBaseValue() <= 26.0) {
@@ -76,7 +91,7 @@ public final class PigmanClasses {
                         new ItemStack(ModItems.BOMB_NETHERITE_LEGGINGS.get()), new ItemStack(ModItems.BOMB_NETHERITE_BOOTS.get()));
                 MobUtil.setBase(pigman, Attributes.ATTACK_DAMAGE, d50 ? 6.0 : 12.0);
             }
-            case 2 -> {
+            case 3 -> {
                 mount = new Ghast(EntityType.GHAST, level);
                 mount.setCustomName(Component.literal("ghast feliz"));
                 mount.addTag(GHAST_MOUNT_TAG);

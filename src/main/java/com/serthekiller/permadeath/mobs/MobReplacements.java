@@ -19,6 +19,8 @@ import net.minecraft.world.entity.monster.Drowned;
 import net.minecraft.world.entity.monster.ElderGuardian;
 import net.minecraft.world.entity.monster.Evoker;
 import net.minecraft.world.entity.monster.Guardian;
+import net.minecraft.world.entity.monster.Pillager;
+import net.minecraft.world.entity.monster.Vex;
 import net.minecraft.world.entity.monster.Vindicator;
 import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.entity.monster.ZombifiedPiglin;
@@ -104,12 +106,9 @@ public final class MobReplacements {
                 }
                 vindicator.addEffect(new MobEffectInstance(MobEffects.DAMAGE_BOOST, MobUtil.INFINITE, 0));
                 MobUtil.multiplyMaxHealth(vindicator, 2.0);
-                boolean evoker = day >= 60 ? level.random.nextInt(100) <= 50 : day >= 50 && level.random.nextInt(100) == 1;
-                if (evoker) {
-                    place(level, new Evoker(EntityType.EVOKER, level), entity);
-                } else {
-                    place(level, vindicator, entity);
-                }
+                // Plugin: the D50 evokers come from pillagers and the D60 ones from the vindicator roll (see
+                // the D50/D60 handlers); Fabric rolled them here.
+                place(level, vindicator, entity);
             }
             entity.discard();
             return true;
@@ -129,12 +128,48 @@ public final class MobReplacements {
             return true;
         }
         if (day >= 60 && entity instanceof Villager) {
-            place(level, new Vindicator(EntityType.VINDICATOR, level), entity);
+            // Plugin: half of the villagers become vindicators and half become vexes (Fabric: all vindicators).
+            place(level, level.random.nextBoolean() ? new Vex(EntityType.VEX, level) : new Vindicator(EntityType.VINDICATOR, level), entity);
             entity.discard();
             return true;
         }
         return false;
     }
+
+    /**
+     * D50+: a fresh pillager becomes an evoker with probability 1/100 (plugin).
+     * @return true when the pillager was replaced.
+     */
+    public static boolean pillagerToEvoker(LivingEntity entity, ServerLevel level) {
+        if (entity instanceof Pillager pillager && !pillager.getTags().contains(SpecialMobs.PROCESSED_STACK)
+                && MobTracking.tryClaim(pillager, "pillager_evoker_roll") && level.random.nextInt(100) == 0) {
+            place(level, new Evoker(EntityType.EVOKER, level), pillager);
+            pillager.discard();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * D60: half of the fresh vindicators vanish; in their place an evoker with double health and Resistance III
+     * appears if there are fewer than 5 evokers within 15 blocks (plugin).
+     * @return true when the vindicator was removed.
+     */
+    public static boolean vindicatorRollD60(LivingEntity entity, ServerLevel level) {
+        if (!(entity instanceof Vindicator vindicator) || vindicator.getTags().contains(SpecialMobs.PROCESSED_STACK)
+                || !MobTracking.tryClaim(vindicator, "vindicator_roll_d60") || !level.random.nextBoolean()) {
+            return false;
+        }
+        if (count(level, vindicator, Evoker.class, 15.0) < 5) {
+            Evoker evoker = new Evoker(EntityType.EVOKER, level);
+            MobUtil.multiplyMaxHealth(evoker, 2.0);
+            evoker.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, MobUtil.INFINITE, 2));
+            place(level, evoker, vindicator);
+        }
+        vindicator.discard();
+        return true;
+    }
+
 
     private static int count(ServerLevel level, LivingEntity around, Class<? extends LivingEntity> type, double radius) {
         AABB box = around.getBoundingBox().inflate(radius);

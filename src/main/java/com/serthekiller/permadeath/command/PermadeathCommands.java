@@ -137,7 +137,7 @@ public final class PermadeathCommands {
                 + "\n§e/permadeath reload §7- (OP) Reinicia la fase actual"
                 + "\n§e/permadeath reset §7- (OP) Vuelve al día 0"
                 + "\n§e/permadeath resetstorm §7- (OP) Termina la tormenta"
-                + "\n§e/permadeath mikecrack enable|disable §7- (OP) Cambio de Mikecrack (día 60)"
+                + "\n§e/permadeath mikecrack enable|disable §7- (OP) Cambio de Mikecrack (activo por defecto el día 60)"
                 + "\n§e/permadeath mensaje set <jugador> <texto> §7- (OP) Cambia el mensaje de otro"
                 + "\n§e/permadeath server §7- (OP) Activa/desactiva el modo restringido"
                 + "\n§e/permadeath maldicion <jugador> §7- (OP) Maldice al último en entrar a The Beginning"
@@ -367,7 +367,7 @@ public final class PermadeathCommands {
         for (Map.Entry<UUID, Long> e : s.witherRemainingMillis.entrySet()) {
             sb.append("\n§7wither[").append(e.getKey()).append("]=§f").append(TimeFormat.hms(e.getValue()));
         }
-        sb.append("\n§7mikecrack=§f").append(s.mikecrackEnabled).append(" §7endArenaPrepared=§f").append(s.endArenaPrepared)
+        sb.append("\n§7mikecrack=§f").append(Mikecrack.isEnabled()).append(" §7(disabledByOp=§f").append(s.mikecrackDisabled).append("§7)").append(" §7endArenaPrepared=§f").append(s.endArenaPrepared)
                 .append(" §7now=§f").append(TimeFormat.utc(Instant.ofEpochMilli(now)));
         reply(ctx, sb.toString(), false);
         return 1;

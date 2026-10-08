@@ -4,6 +4,7 @@ import com.serthekiller.permadeath.mechanics.MushroomSpawn;
 import com.serthekiller.permadeath.mobs.BeginningMobs;
 import com.serthekiller.permadeath.mobs.EnderMobs;
 import com.serthekiller.permadeath.mobs.MobGoals;
+import com.serthekiller.permadeath.mobs.MobReplacements;
 import com.serthekiller.permadeath.mobs.MobTracking;
 import com.serthekiller.permadeath.mobs.SkeletonClasses;
 import com.serthekiller.permadeath.mobs.SpecialMobs;
@@ -27,6 +28,7 @@ import net.minecraft.world.entity.animal.IronGolem;
 import net.minecraft.world.entity.animal.Pufferfish;
 import net.minecraft.world.entity.animal.SnowGolem;
 import net.minecraft.world.entity.item.PrimedTnt;
+import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Drowned;
 import net.minecraft.world.entity.monster.EnderMan;
@@ -107,11 +109,14 @@ public final class Day60Handler extends LatePhaseHandler {
 
     @Override
     protected boolean beforeCommonJoin(LivingEntity entity, ServerLevel level, boolean loadedFromDisk) {
-        if (Day50to59Handler.lateJoin(entity, level)) {
+        if (Day50to59Handler.lateJoin(entity, level, loadedFromDisk)) {
             return true;
         }
-        if (entity instanceof ZombifiedPiglin pigman && level.dimension() == Level.NETHER
-                && !pigman.getTags().contains(SpecialMobs.PROCESSED_STACK)) {
+        if (!loadedFromDisk && MobReplacements.vindicatorRollD60(entity, level)) {
+            return true;
+        }
+        if (entity instanceof ZombifiedPiglin pigman && !pigman.getTags().contains(SpecialMobs.PROCESSED_STACK)) {
+            // Plugin: no pigmen at all on D60 (Fabric removed them only in the Nether).
             pigman.discard();
             return true;
         }
@@ -156,8 +161,9 @@ public final class Day60Handler extends LatePhaseHandler {
             pillager.setItemSlot(EquipmentSlot.MAINHAND, MobUtil.enchanted(level, new ItemStack(Items.CROSSBOW), ench(Enchantments.QUICK_CHARGE, 1)));
             MobGoals.ensureMachineGun(pillager);
         } else if (entity instanceof Ravager ravager) {
-            ravager.addEffect(new MobEffectInstance(MobEffects.DAMAGE_BOOST, MobUtil.INFINITE, 1, false, true));
-            ravager.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, MobUtil.INFINITE, 0, false, true));
+            Day50to59Handler.lateRavager(ravager, level);
+        } else if (entity instanceof Blaze blaze) {
+            MobUtil.setMaxHealth(blaze, 200.0);
         } else if (entity instanceof Vindicator vindicator) {
             vindicator.setItemSlot(EquipmentSlot.MAINHAND, MobUtil.enchanted(level, new ItemStack(Items.DIAMOND_AXE), ench(Enchantments.SHARPNESS, 5)));
         } else if (entity instanceof Creeper creeper) {
@@ -171,15 +177,17 @@ public final class Day60Handler extends LatePhaseHandler {
         } else if (entity instanceof Bee bee) {
             MobUtil.setBase(bee, Attributes.ATTACK_DAMAGE, 30.0);
         } else if (entity instanceof Vex vex) {
+            // Plugin: Strength III and attack 7 (Fabric 14).
             vex.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, MobUtil.INFINITE, 2, false, true));
             vex.addEffect(new MobEffectInstance(MobEffects.DAMAGE_BOOST, MobUtil.INFINITE, 2, false, true));
-            MobUtil.setBase(vex, Attributes.ATTACK_DAMAGE, 14.0);
+            MobUtil.setBase(vex, Attributes.ATTACK_DAMAGE, 7.0);
         } else if (entity instanceof Slime) {
             MobUtil.setMaxHealth(entity, 200.0);
         } else if (entity instanceof Shulker shulker) {
             shulker.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, MobUtil.INFINITE, 5, false, true));
         } else if (entity instanceof Pufferfish pufferfish) {
             pufferfish.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, MobUtil.INFINITE, 5, false, true));
+            MobUtil.name(pufferfish, "§6Pufferfish invulnerable");
         }
     }
 
@@ -203,10 +211,7 @@ public final class Day60Handler extends LatePhaseHandler {
 
     @Override
     protected boolean replacePhantomWithGhasts(Phantom phantom, ServerLevel level) {
-        if (level.random.nextInt(100) <= 25) {
-            Day50to59Handler.spawnFourEnderGhasts(phantom, level);
-            return true;
-        }
+        Day50to59Handler.phantomGhasts(phantom, level);
         return false;
     }
 
@@ -274,7 +279,7 @@ public final class Day60Handler extends LatePhaseHandler {
 
     @Override
     public void onSleepAttempt(CanPlayerSleepEvent event) {
-        PhaseCommon.denySleep(event, PhaseCommon.PhantomReset.ELEVEN_PERCENT);
+        PhaseCommon.denySleep(event, PhaseCommon.PhantomReset.TEN_PERCENT);
     }
 
     @Override

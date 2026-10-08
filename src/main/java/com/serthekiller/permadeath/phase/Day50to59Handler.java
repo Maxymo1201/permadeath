@@ -1,16 +1,19 @@
 package com.serthekiller.permadeath.phase;
 
 import com.serthekiller.permadeath.beginning.BeginningDimension;
+import com.serthekiller.permadeath.core.rules.DayRules;
 import com.serthekiller.permadeath.mechanics.MushroomSpawn;
 import com.serthekiller.permadeath.mobs.BeginningMobs;
 import com.serthekiller.permadeath.mobs.EnderMobs;
 import com.serthekiller.permadeath.mobs.ExplodingAnimals;
 import com.serthekiller.permadeath.mobs.HostileMobConverter;
 import com.serthekiller.permadeath.mobs.MobGoals;
+import com.serthekiller.permadeath.mobs.MobReplacements;
 import com.serthekiller.permadeath.mobs.MobTracking;
 import com.serthekiller.permadeath.mobs.PigmanClasses;
 import com.serthekiller.permadeath.mobs.SkeletonClasses;
 import com.serthekiller.permadeath.mobs.SpecialMobs;
+import com.serthekiller.permadeath.progression.Permadeath;
 import com.serthekiller.permadeath.util.MobUtil;
 import com.serthekiller.permadeath.util.Texts;
 import net.minecraft.core.BlockPos;
@@ -27,7 +30,6 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
-import net.minecraft.world.entity.animal.Cat;
 import net.minecraft.world.entity.animal.IronGolem;
 import net.minecraft.world.entity.animal.Pufferfish;
 import net.minecraft.world.entity.monster.Blaze;
@@ -105,11 +107,11 @@ public final class Day50to59Handler extends LatePhaseHandler {
 
     @Override
     protected boolean beforeCommonJoin(LivingEntity entity, ServerLevel level, boolean loadedFromDisk) {
-        return lateJoin(entity, level);
+        return lateJoin(entity, level, loadedFromDisk);
     }
 
-    /** Shared by D50 and D60: Zombie Gigante and Wither Emperador rolls (once per mob). */
-    static boolean lateJoin(LivingEntity entity, ServerLevel level) {
+    /** Shared by D50 and D60: Zombie Gigante, Wither Emperador and pillager → evoker rolls (once per mob). */
+    static boolean lateJoin(LivingEntity entity, ServerLevel level, boolean loadedFromDisk) {
         if (SpecialMobs.shouldBecomeGiant(entity, level)) {
             SpecialMobs.spawnGiantReplacing(entity, level);
             return true;
@@ -117,7 +119,7 @@ public final class Day50to59Handler extends LatePhaseHandler {
         if (SpecialMobs.tryMakeEmperor(entity, level)) {
             return true;
         }
-        return false;
+        return !loadedFromDisk && MobReplacements.pillagerToEvoker(entity, level);
     }
 
     @Override
@@ -181,20 +183,13 @@ public final class Day50to59Handler extends LatePhaseHandler {
                 MobUtil.name(zp, "§6Pigman Full Diamante");
             }
         } else if (entity instanceof Piglin piglin) {
-            if (level.random.nextInt(100) <= 20) {
-                Ravager ravager = new Ravager(EntityType.RAVAGER, level);
-                ravager.setPos(piglin.getX(), piglin.getY(), piglin.getZ());
-                SpecialMobs.setupUltraRavagerStack(ravager, level);
-                level.addFreshEntity(ravager);
-                piglin.discard();
-            } else {
-                MobUtil.equipArmor(piglin, new ItemStack(Items.GOLDEN_HELMET), new ItemStack(Items.GOLDEN_CHESTPLATE),
-                        new ItemStack(Items.GOLDEN_LEGGINGS), new ItemStack(Items.GOLDEN_BOOTS));
-                MobUtil.name(piglin, "§6Piglin Full Oro");
-            }
+            MobUtil.equipArmor(piglin, new ItemStack(Items.GOLDEN_HELMET), new ItemStack(Items.GOLDEN_CHESTPLATE),
+                    new ItemStack(Items.GOLDEN_LEGGINGS), new ItemStack(Items.GOLDEN_BOOTS));
+            MobUtil.name(piglin, "§6Piglin Full Oro");
         } else if (entity instanceof Ravager ravager) {
-            ravager.addEffect(new MobEffectInstance(MobEffects.DAMAGE_BOOST, MobUtil.INFINITE, 1, false, true));
-            ravager.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, MobUtil.INFINITE, 0, false, true));
+            lateRavager(ravager, level);
+        } else if (entity instanceof Blaze blaze) {
+            MobUtil.setMaxHealth(blaze, 200.0);
         } else if (entity instanceof Vindicator vindicator) {
             vindicator.setItemSlot(EquipmentSlot.MAINHAND, MobUtil.enchanted(level, new ItemStack(Items.DIAMOND_AXE), ench(Enchantments.SHARPNESS, 5)));
         } else if (entity instanceof Creeper creeper) {
@@ -212,7 +207,23 @@ public final class Day50to59Handler extends LatePhaseHandler {
             shulker.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, MobUtil.INFINITE, 5, false, true));
         } else if (entity instanceof Pufferfish pufferfish) {
             pufferfish.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, MobUtil.INFINITE, 5, false, true));
+            MobUtil.name(pufferfish, "§6Pufferfish invulnerable");
         }
+    }
+
+    /**
+     * D50+ ravagers: in the Overworld every ravager outside a stack becomes a gold Ultra Ravager (plugin); the
+     * others keep the Fabric Strength II + Resistance I.
+     */
+    static void lateRavager(Ravager ravager, ServerLevel level) {
+        if (level.dimension() == Level.OVERWORLD && !ravager.getTags().contains(SpecialMobs.PROCESSED_STACK)) {
+            if (!SpecialMobs.isGoldUltraRavager(ravager)) {
+                SpecialMobs.makeGoldUltraRavager(ravager);
+            }
+            return;
+        }
+        ravager.addEffect(new MobEffectInstance(MobEffects.DAMAGE_BOOST, MobUtil.INFINITE, 1, false, true));
+        ravager.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, MobUtil.INFINITE, 0, false, true));
     }
 
     @Override
@@ -224,18 +235,21 @@ public final class Day50to59Handler extends LatePhaseHandler {
 
     @Override
     protected boolean replacePhantomWithGhasts(Phantom phantom, ServerLevel level) {
-        if (level.random.nextInt(100) == 1) {
-            spawnFourEnderGhasts(phantom, level);
-            return true;
-        }
+        phantomGhasts(phantom, level);
         return false;
     }
 
-    static void spawnFourEnderGhasts(Phantom phantom, ServerLevel level) {
+    /**
+     * D50+: with {@code nextInt(101) <= 1} (D50-59) or {@code <= 25} (D60) four Ender Ghasts spawn with the phantom
+     * (plugin). Fabric used 1/100 and 26/100 and removed the phantom.
+     */
+    static void phantomGhasts(Phantom phantom, ServerLevel level) {
+        if (level.random.nextInt(101) > DayRules.phantomGhastRoll(Permadeath.day())) {
+            return;
+        }
         for (int i = 0; i < 4; i++) {
             EnderMobs.spawnEnderGhast(level, phantom.getX(), phantom.getY() + 3.0, phantom.getZ());
         }
-        phantom.discard();
     }
 
     // ----------------------------------------------------------------------------------------------- damage
@@ -247,7 +261,7 @@ public final class Day50to59Handler extends LatePhaseHandler {
 
     /** D50/D60 dodges and immunities. */
     static boolean lateDamage(LivingEntity entity, DamageSource source) {
-        if (EnderMobs.isEnderCreeper(entity) && EnderMobs.isDodgeableD50(source)) {
+        if (EnderMobs.isEnderCreeper(entity) && EnderMobs.isDodgeableEnderCreeper(source)) {
             EnderMobs.dodgeWithTeleport(entity);
             return true;
         }
@@ -283,8 +297,8 @@ public final class Day50to59Handler extends LatePhaseHandler {
     static void lateDeath(LivingEntity entity, ServerLevel level) {
         SpecialMobs.handleGiantDrops(entity, level);
         SpecialMobs.handleEmperorDrops(entity, level);
-        if (entity instanceof Cat cat && cat.getTags().contains(ExplodingAnimals.GALACTIC_CAT_TAG)) {
-            ExplodingAnimals.onGalacticCatDeath(level, cat.getX(), cat.getY(), cat.getZ());
+        if (entity.getTags().contains(ExplodingAnimals.GALACTIC_CAT_TAG)) {
+            ExplodingAnimals.startGalacticCurse(level, entity.getX(), entity.getY(), entity.getZ());
         }
         BeginningMobs.onVexDeath(entity);
     }
@@ -303,7 +317,7 @@ public final class Day50to59Handler extends LatePhaseHandler {
 
     @Override
     public void onSleepAttempt(CanPlayerSleepEvent event) {
-        PhaseCommon.denySleep(event, PhaseCommon.PhantomReset.ELEVEN_PERCENT);
+        PhaseCommon.denySleep(event, PhaseCommon.PhantomReset.TEN_PERCENT);
     }
 
     /** Mining without a netherite tool hurts: 1 HP at D50, 16 HP at D60 (invulnerability frames reset). */

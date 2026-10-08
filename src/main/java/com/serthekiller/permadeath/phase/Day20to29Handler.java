@@ -59,7 +59,17 @@ public final class Day20to29Handler implements PhaseHandler {
             return;
         }
         SpecialMobs.transformGiantMobs(living, level);
+        if (Permadeath.day() >= 25) {
+            SpecialMobs.buffEarlyRavager(living);
+        }
         applySpiderEffectsAndRider(living, level);
+        if (living instanceof Skeleton skeleton && !(skeleton.getVehicle() instanceof Spider)
+                && MobTracking.tryClaim(skeleton, SkeletonClasses.CLASSED_KEY)) {
+            SkeletonClasses.applyD20Class(skeleton, level, null);
+            if (skeleton.isRemoved()) {
+                return;
+            }
+        }
         if (living instanceof Phantom phantom) {
             PhaseCommon.enlargePhantom(phantom);
         }
@@ -78,16 +88,13 @@ public final class Day20to29Handler implements PhaseHandler {
 
     @Override
     public void onSleepAttempt(CanPlayerSleepEvent event) {
-        PhaseCommon.denySleep(event, PhaseCommon.PhantomReset.ALWAYS_SILENT);
+        PhaseCommon.denySleep(event, PhaseCommon.PhantomReset.ALWAYS_WITH_MESSAGE);
     }
 
     @Override
     public void onDeath(LivingEntity entity, DamageSource source, ServerLevel level) {
-        if (Permadeath.day() >= 25) {
-            SpecialMobs.handleCaveSpiderHelmetDrop(entity, level);
-            SpecialMobs.handleGiantMobArmorDrops(entity, level);
-        }
-        PhaseCommon.ravagerTotemDrop(entity, level);
+        SpecialMobs.handleNetheriteArmorDrops(entity, source, level);
+        PhaseCommon.ravagerTotemDrop(entity, source, level);
     }
 
     @Override
@@ -106,7 +113,7 @@ public final class Day20to29Handler implements PhaseHandler {
     static boolean clearsLoot(LivingEntity entity) {
         return entity instanceof IronGolem || entity instanceof Zoglin || entity instanceof ZombifiedPiglin
                 || entity instanceof Guardian || entity instanceof EnderMan || entity instanceof Witch
-                || entity instanceof WitherSkeleton || entity instanceof Skeleton || entity instanceof Evoker
+                || entity instanceof WitherSkeleton || entity instanceof Evoker
                 || entity instanceof Phantom || entity instanceof Drowned || entity instanceof Blaze
                 || entity instanceof Piglin
                 || MobUtil.nameContains(entity, "GIGA Slime")

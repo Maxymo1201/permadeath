@@ -8,6 +8,7 @@ import com.serthekiller.permadeath.items.SuperGoldenApplePlus;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.food.FoodProperties;
+import net.minecraft.world.food.Foods;
 import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.ArmorMaterial;
 import net.minecraft.world.item.BlockItem;
@@ -26,7 +27,11 @@ import java.util.List;
 public final class ModItems {
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(PermadeathMod.MOD_ID);
 
-    private static final FoodProperties APPLE_FOOD = new FoodProperties.Builder().nutrition(4).saturationModifier(1.2F).alwaysEdible().build();
+    /**
+     * Both apples are golden apples in the plugin ("&6Super/Hyper Golden Apple +"), so they also give the vanilla
+     * golden apple effects (Regeneration II 5 s, Absorption I 2 min). Fabric had food without effects.
+     */
+    private static final FoodProperties APPLE_FOOD = Foods.GOLDEN_APPLE;
 
     public static final DeferredItem<Item> SUPER_GOLDEN_APPLE_PLUS = ITEMS.registerItem("super_golden_apple_plus",
             SuperGoldenApplePlus::new, new Item.Properties().food(APPLE_FOOD).rarity(Rarity.EPIC));

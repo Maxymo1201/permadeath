@@ -115,6 +115,16 @@ public final class MobUtil {
         mob.setItemSlot(EquipmentSlot.FEET, feet);
     }
 
+    /** Drop chance of the four armour slots and of both hands. */
+    public static void dropChances(Mob mob, float armor, float hands) {
+        mob.setDropChance(EquipmentSlot.HEAD, armor);
+        mob.setDropChance(EquipmentSlot.CHEST, armor);
+        mob.setDropChance(EquipmentSlot.LEGS, armor);
+        mob.setDropChance(EquipmentSlot.FEET, armor);
+        mob.setDropChance(EquipmentSlot.MAINHAND, hands);
+        mob.setDropChance(EquipmentSlot.OFFHAND, hands);
+    }
+
     public static void name(LivingEntity entity, String legacyFormatted) {
         entity.setCustomName(Component.literal(legacyFormatted));
         entity.setCustomNameVisible(false);

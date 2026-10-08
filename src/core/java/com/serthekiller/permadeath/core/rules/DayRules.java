@@ -47,6 +47,20 @@ public final class DayRules {
         return vanillaDelta * drowningMultiplier(day);
     }
 
+    /**
+     * Damage of one drowning hit taken by a player: 5 on D50-59 and 10 from D60 (Permadeath plugin EntityEvents,
+     * both editions), -1 = vanilla (2). The faster air loss above is applied on top of this.
+     */
+    public static float drowningDamage(int day) {
+        if (day >= 60) {
+            return 10.0F;
+        }
+        if (day >= 50) {
+            return 5.0F;
+        }
+        return -1.0F;
+    }
+
     // ---------------------------------------------------------------- blindness under rain (D40 / D50)
     /**
      * Probability denominator ("1 in N per tick") of getting Blindness while exposed to Death Train rain.
@@ -91,6 +105,78 @@ public final class DayRules {
     public static boolean deathTrainDisablesRegeneration(int day) {
         return day >= 50;
     }
+
+    /** D50-59 Death Train mobs are also immune to fire (plugin deathTrainEffects; not on D60). */
+    public static boolean deathTrainFireResistance(int day) {
+        return day >= 50 && day < 60;
+    }
+
+    // ---------------------------------------------------------------- weather / players (plugin tick loop)
+    /**
+     * D50+ random levitation: players under open sky while it rains get Levitation I with probability
+     * 1/{@value #RANDOM_LEVITATION_ONE_IN} every {@value #RANDOM_LEVITATION_PERIOD_TICKS} ticks (the plugin
+     * player loop), for 3-19 s.
+     */
+    public static final int RANDOM_LEVITATION_FROM_DAY = 50;
+    public static final int RANDOM_LEVITATION_ONE_IN = 10000;
+    public static final int RANDOM_LEVITATION_PERIOD_TICKS = 20;
+
+    /** Levitation duration in ticks for a roll {@code r} in [0, 17): (3 + r) seconds. */
+    public static int randomLevitationTicks(int roll) {
+        return (3 + roll) * 20;
+    }
+
+    /** D60: ender pearl cooldown applied when the pearl lands (plugin PlayerTeleportEvent, 6 s). */
+    public static final int D60_PEARL_COOLDOWN_TICKS = 120;
+
+    /** D60: Slowness III left by soul sand (plugin, 30 s). */
+    public static final int D60_SOUL_SAND_SLOWNESS_TICKS = 600;
+
+    /** D50+: an exploding bed resets the phantom counter with this percent chance (plugin, 10 %). */
+    public static final int D50_PHANTOM_RESET_PERCENT = 10;
+
+    // ---------------------------------------------------------------- mobs (plugin SpawnListener)
+    /** Phantom size from D20: 9, and 18 from D50. */
+    public static int phantomSize(int day) {
+        return day >= 50 ? 18 : 9;
+    }
+
+    /**
+     * D50+: a phantom spawn also brings four Ender Ghasts when {@code nextInt(101) <= value}: 1 on D50-59
+     * (2/101), 25 on D60 (26/101). The phantom itself stays.
+     */
+    public static int phantomGhastRoll(int day) {
+        return day >= 60 ? 25 : 1;
+    }
+
+    /** Zombie Gigante: one plains zombie in {@code N} (D50-59 1/500, D60 1/125). */
+    public static int giantOneIn(int day) {
+        return day >= 60 ? 125 : 500;
+    }
+
+    /** Wither Skeleton Emperador: one Nether wither skeleton in {@code N} (D50-59 1/50, D60 1/13). */
+    public static int emperorOneIn(int day) {
+        return day >= 60 ? 13 : 50;
+    }
+
+    /** D40+ pigman classes: {@code nextInt(99) + 1 <= value} (D40-49 5, D50-59 20). */
+    public static int pigmanClassChance(int day) {
+        return day >= 50 ? 20 : 5;
+    }
+
+    /** Custom netherite armour drops: only D25-29, only mobs killed by a player, 10 % per piece. */
+    public static boolean netheriteArmorDropDay(int day) {
+        return day >= 25 && day < 30;
+    }
+
+    public static final int NETHERITE_ARMOR_DROP_PERCENT = 10;
+
+    /** D40-49 supernova cats: 30 s fuse, explosion power 200 (plugin config default). */
+    public static final int SUPERNOVA_FUSE_TICKS = 600;
+    public static final float SUPERNOVA_POWER = 200.0F;
+
+    /** Attack damage of D20+ hostile passive mobs that have no attack attribute (plugin, 8). */
+    public static final double HOSTILE_PASSIVE_ATTACK_DAMAGE = 8.0;
 
     // ---------------------------------------------------------------- misc
     /** PvP is enabled from D40 (Fabric PvpChanges). */

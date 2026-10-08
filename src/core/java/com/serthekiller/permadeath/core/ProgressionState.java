@@ -48,8 +48,10 @@ public final class ProgressionState {
     /** D60 periodic Wither: remaining real presence time (ms) per player. */
     public final Map<UUID, Long> witherRemainingMillis = new HashMap<>();
 
-    /** "Cambio de Mikecrack" toggle (creepers ignore light rules), D60. */
+    /** "Cambio de Mikecrack" explicitly enabled with /permadeath mikecrack enable (or migrated from Fabric). */
     public boolean mikecrackEnabled;
+    /** "Cambio de Mikecrack" explicitly disabled with /permadeath mikecrack disable (it is on by default on D60). */
+    public boolean mikecrackDisabled;
 
     /** Hyper Golden Apple + consumed per player. */
     public final Map<UUID, Integer> hyperApplesConsumed = new HashMap<>();

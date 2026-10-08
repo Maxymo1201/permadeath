@@ -4,6 +4,7 @@ import com.serthekiller.permadeath.PermadeathMod;
 import com.serthekiller.permadeath.data.PortalState;
 import com.serthekiller.permadeath.mechanics.DeathTrain;
 import com.serthekiller.permadeath.progression.Permadeath;
+import com.serthekiller.permadeath.util.Texts;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.resources.ResourceKey;
@@ -162,6 +163,8 @@ public final class BeginningPortal {
         MinecraftServer server = level.getServer();
         if (level.dimension() == Level.OVERWORLD && day >= 40 && day < 50) {
             if (!player.isSpectator()) {
+                // Plugin (PaperListeners) broadcast; Fabric teleported silently.
+                Texts.broadcast(server, "§c§lEl jugador §4§l" + player.getName().getString() + " §c§lentró a TheBeginning antes de tiempo.");
                 player.teleportTo(player.getX(), -100.0, player.getZ());
                 return GatewayOverride.NO_TELEPORT;
             }

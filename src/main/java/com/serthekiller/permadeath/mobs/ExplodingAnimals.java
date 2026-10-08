@@ -1,19 +1,28 @@
 package com.serthekiller.permadeath.mobs;
 
+import com.serthekiller.permadeath.core.rules.DayRules;
 import com.serthekiller.permadeath.progression.Permadeath;
 import com.serthekiller.permadeath.util.MobUtil;
+import com.serthekiller.permadeath.util.ServerScheduler;
 import com.serthekiller.permadeath.util.Texts;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
+import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.animal.Cat;
 import net.minecraft.world.entity.animal.IronGolem;
+import net.minecraft.world.entity.animal.Ocelot;
 import net.minecraft.world.entity.animal.PolarBear;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.wither.WitherBoss;
@@ -58,22 +67,27 @@ import java.util.UUID;
 /**
  * Supernova cats (D40-49), galactic cats (D50+) and explosive polar bears (D50+).
  *
- * <p>Fixes over the Fabric handlers: the D40 supernova countdown was decremented by 10 every tick (2 s instead
- * of the 20 s implied by its 10-tick interval constant); supernova cats born from a galactic cat (D50+) were
- * stored with an absolute tick in a map only processed for polar bears and never exploded.</p>
+ * <p>Fixes over the Fabric handlers: the D40 supernova countdown was decremented by 10 every tick (2 s);
+ * supernova cats born from a galactic cat (D50+) were stored with an absolute tick in a map only processed for
+ * polar bears and never exploded.</p>
+ *
+ * <p>Plugin numbers (Permadeath SpawnListener / EntityEvents / GatoGalacticoTask): supernova cats and ocelots are
+ * named "Gato Supernova", explode after 30 s with power 200 and at most 2 are pending at the same time (extra cats
+ * vanish); galactic cats announce the curse and count down 5 s before summoning; a polar bear that hits a player
+ * explodes 0.5 s later with power 1.5 and fire, without breaking blocks (Fabric: any bear within 20 blocks
+ * blew up 2 s later with power 10, breaking blocks).</p>
  */
 public final class ExplodingAnimals {
     public static final String GALACTIC_CAT_TAG = "galactic_cat";
     public static final String SUPERNOVA_CAT_TAG = "SupernovaCat";
     public static final String GALACTIC_DRAGON_TAG = "galactic_dragon";
     public static final String GALACTIC_GOLEM_TAG = "permadeath:galactic_golem";
-    private static final int SUPERNOVA_TICKS = 400;
-    private static final int POLAR_BEAR_TICKS = 40;
+    private static final String BEAR_PRIMED_TAG = "permadeath:bear_primed";
+    private static final int MAX_PENDING_SUPERNOVAS = 2;
 
     private static final Map<UUID, Integer> SUPERNOVA_TIMERS = new HashMap<>();
     private static final Map<UUID, Float> SUPERNOVA_POWER = new HashMap<>();
     private static final Set<UUID> WARNED_CATS = new HashSet<>();
-    private static final Map<UUID, Integer> BEAR_TIMERS = new HashMap<>();
 
     private ExplodingAnimals() {
     }
@@ -82,41 +96,45 @@ public final class ExplodingAnimals {
         SUPERNOVA_TIMERS.clear();
         SUPERNOVA_POWER.clear();
         WARNED_CATS.clear();
-        BEAR_TIMERS.clear();
+    }
+
+    private static boolean isCat(Entity entity) {
+        return entity instanceof Cat || entity instanceof Ocelot;
     }
 
     /** Called every tick of every level by the D40+ phase handlers (scans every 10 ticks, like Fabric). */
     public static void tick(ServerLevel level) {
-        int day = Permadeath.day();
         if (level.getGameTime() % 10 == 0) {
-            if (day < 50) {
+            if (Permadeath.day() < 50) {
                 markSupernovaCats(level);
             } else {
                 markGalacticCats(level);
-                detectPolarBears(level);
             }
             processSupernovaTimers(level, 10);
-        }
-        if (day >= 50) {
-            processPolarBearTimers(level);
         }
     }
 
     private static void markSupernovaCats(ServerLevel level) {
         for (ServerPlayer player : level.players()) {
-            for (Cat cat : level.getEntitiesOfClass(Cat.class, player.getBoundingBox().inflate(200.0), c -> c.isAlive() && !c.isRemoved())) {
+            for (Animal cat : level.getEntitiesOfClass(Animal.class, player.getBoundingBox().inflate(200.0), c -> isCat(c) && c.isAlive() && !c.isRemoved())) {
                 if (player.distanceTo(cat) < 200.0F && WARNED_CATS.add(cat.getUUID())) {
-                    startSupernova(level, cat, 250.0F);
+                    startSupernova(level, cat, DayRules.SUPERNOVA_POWER);
                 }
             }
         }
     }
 
-    private static void startSupernova(ServerLevel level, Cat cat, float power) {
+    private static void startSupernova(ServerLevel level, Animal cat, float power) {
+        if (SUPERNOVA_TIMERS.size() >= MAX_PENDING_SUPERNOVAS) {
+            // Plugin: with two supernovas already pending, the extra cat simply disappears.
+            cat.discard();
+            return;
+        }
         cat.addTag(SUPERNOVA_CAT_TAG);
-        Texts.broadcast(level.getServer(), Component.literal("¡Un gato supernova va a explotar en " + (int) cat.getX() + ", "
-                + (int) cat.getY() + ", " + (int) cat.getZ() + "!").withStyle(ChatFormatting.RED));
-        SUPERNOVA_TIMERS.put(cat.getUUID(), SUPERNOVA_TICKS);
+        MobUtil.name(cat, "§6Gato Supernova");
+        Texts.broadcast(level.getServer(), Component.literal("Un gato supernova va a explotar en: " + cat.getBlockX() + " "
+                + cat.getBlockY() + " " + cat.getBlockZ() + " (" + level.dimension().location() + ").").withStyle(ChatFormatting.RED));
+        SUPERNOVA_TIMERS.put(cat.getUUID(), DayRules.SUPERNOVA_FUSE_TICKS);
         SUPERNOVA_POWER.put(cat.getUUID(), power);
     }
 
@@ -128,7 +146,7 @@ public final class ExplodingAnimals {
             if (entity == null) {
                 continue;
             }
-            if (!(entity instanceof Cat cat) || !cat.isAlive()) {
+            if (!isCat(entity) || !(entity instanceof LivingEntity cat) || !cat.isAlive()) {
                 it.remove();
                 WARNED_CATS.remove(entry.getKey());
                 SUPERNOVA_POWER.remove(entry.getKey());
@@ -136,7 +154,7 @@ public final class ExplodingAnimals {
             }
             int left = entry.getValue();
             if (left <= 0) {
-                float power = SUPERNOVA_POWER.getOrDefault(cat.getUUID(), 250.0F);
+                float power = SUPERNOVA_POWER.getOrDefault(cat.getUUID(), DayRules.SUPERNOVA_POWER);
                 level.explode(cat, cat.getX(), cat.getY(), cat.getZ(), power, Level.ExplosionInteraction.TNT);
                 cat.discard();
                 it.remove();
@@ -149,7 +167,7 @@ public final class ExplodingAnimals {
 
     private static void markGalacticCats(ServerLevel level) {
         for (ServerPlayer player : level.players()) {
-            for (Cat cat : level.getEntitiesOfClass(Cat.class, player.getBoundingBox().inflate(200.0), c -> c.isAlive() && !c.isRemoved())) {
+            for (Animal cat : level.getEntitiesOfClass(Animal.class, player.getBoundingBox().inflate(200.0), c -> isCat(c) && c.isAlive() && !c.isRemoved())) {
                 if (cat.getTags().contains(SUPERNOVA_CAT_TAG)) {
                     continue;
                 }
@@ -162,40 +180,61 @@ public final class ExplodingAnimals {
         }
     }
 
-    private static void detectPolarBears(ServerLevel level) {
-        for (ServerPlayer player : level.players()) {
-            for (PolarBear bear : level.getEntitiesOfClass(PolarBear.class, player.getBoundingBox().inflate(20.0), b -> b.isAlive() && !b.isRemoved())) {
-                if (player.distanceTo(bear) < 20.0F) {
-                    BEAR_TIMERS.putIfAbsent(bear.getUUID(), POLAR_BEAR_TICKS);
-                }
-            }
+    /**
+     * D50+: a polar bear that hits a player does not deal the hit; it freezes, hisses and explodes 0.5 s later
+     * (power 1.5, fire, no block damage). @return true to cancel the damage.
+     */
+    public static boolean onPolarBearHit(LivingEntity target, DamageSource source) {
+        if (!(target instanceof ServerPlayer) || !(source.getDirectEntity() instanceof PolarBear bear)
+                || !(bear.level() instanceof ServerLevel level) || bear.getTags().contains(BEAR_PRIMED_TAG)) {
+            return false;
         }
-    }
-
-    private static void processPolarBearTimers(ServerLevel level) {
-        Iterator<Map.Entry<UUID, Integer>> it = BEAR_TIMERS.entrySet().iterator();
-        while (it.hasNext()) {
-            Map.Entry<UUID, Integer> entry = it.next();
-            Entity entity = level.getEntity(entry.getKey());
-            if (entity == null) {
-                continue;
-            }
-            if (!(entity instanceof PolarBear bear) || !bear.isAlive()) {
-                it.remove();
-            } else if (entry.getValue() <= 0) {
-                level.explode(bear, bear.getX(), bear.getY(), bear.getZ(), 10.0F, Level.ExplosionInteraction.TNT);
+        bear.addTag(BEAR_PRIMED_TAG);
+        bear.setNoAi(true);
+        level.playSound(null, bear.getX(), bear.getY(), bear.getZ(), SoundEvents.CREEPER_PRIMED, SoundSource.HOSTILE, 1.0F, 1.0F);
+        ServerScheduler.schedule(10, () -> {
+            if (bear.isAlive()) {
+                level.explode(bear, bear.getX(), bear.getY(), bear.getZ(), 1.5F, true, Level.ExplosionInteraction.NONE);
                 bear.discard();
-                it.remove();
-            } else {
-                entry.setValue(entry.getValue() - 1);
             }
-        }
+        });
+        return true;
     }
 
-    /** Death of a galactic cat: small explosion and a random mob (42-sided roll, Fabric spawnRandomMobFromGalacticCat). */
-    public static void onGalacticCatDeath(ServerLevel level, double x, double y, double z) {
+    /**
+     * Death of a galactic cat (plugin GatoGalacticoTask): the curse is announced, a 5 s countdown with a note
+     * block sound follows, then a random mob is summoned and announced.
+     */
+    public static void startGalacticCurse(ServerLevel level, double x, double y, double z) {
+        MinecraftServer server = level.getServer();
+        String coords = (int) x + ", " + (int) y + ", " + (int) z;
+        Texts.broadcast(server, Component.literal("La maldición de un Gato Galáctico ha comenzado en: " + coords).withStyle(ChatFormatting.RED));
+        for (int i = 0; i < 5; i++) {
+            int left = 5 - i;
+            ServerScheduler.schedule(20 * i, () -> {
+                Texts.broadcast(server, Component.literal("Un gato galáctico invocará un mob al azar en: ").withStyle(ChatFormatting.YELLOW)
+                        .append(Component.literal(String.valueOf(left)).withStyle(ChatFormatting.AQUA)));
+                for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                    player.serverLevel().playSound(null, player.blockPosition(), SoundEvents.NOTE_BLOCK_PLING.value(), SoundSource.MASTER, 1.0F, 2.0F);
+                }
+            });
+        }
+        ServerScheduler.schedule(100, () -> {
+            Entity summoned = onGalacticCatDeath(level, x, y, z);
+            Texts.broadcast(server, Component.literal("Un gato galáctico ha invocado un(a) ").withStyle(ChatFormatting.YELLOW)
+                    .append(summoned.getDisplayName().copy().withStyle(ChatFormatting.RED, ChatFormatting.BOLD))
+                    .append(Component.literal(" (" + coords + ")").withStyle(ChatFormatting.GRAY)));
+        });
+    }
+
+    /**
+     * Summon of a galactic cat curse: small explosion and a random mob (42-sided roll, Fabric
+     * spawnRandomMobFromGalacticCat). @return the summoned mob (for the announcement).
+     */
+    public static Entity onGalacticCatDeath(ServerLevel level, double x, double y, double z) {
         level.explode(null, x, y, z, 2.0F, Level.ExplosionInteraction.NONE);
         int roll = level.getRandom().nextInt(42);
+        Entity[] alreadySpawned = new Entity[1];
         Entity spawned = switch (roll) {
             case 0 -> {
                 CaveSpider spider = new CaveSpider(EntityType.CAVE_SPIDER, level);
@@ -205,6 +244,7 @@ public final class ExplodingAnimals {
                 spider.setPos(x, y, z);
                 level.addFreshEntity(spider);
                 spider.startRiding(skeleton, true);
+                alreadySpawned[0] = spider;
                 yield null;
             }
             case 1 -> new Illusioner(EntityType.ILLUSIONER, level);
@@ -252,7 +292,7 @@ public final class ExplodingAnimals {
                 // Fabric summoned the giant from an unpositioned zombie (the giant appeared at 0,0,0).
                 Zombie zombie = new Zombie(EntityType.ZOMBIE, level);
                 zombie.setPos(x, y, z);
-                SpecialMobs.summonGiant(zombie, level);
+                alreadySpawned[0] = SpecialMobs.summonGiant(zombie, level);
                 yield null;
             }
             case 29 -> {
@@ -261,6 +301,7 @@ public final class ExplodingAnimals {
                 level.addFreshEntity(cat);
                 WARNED_CATS.add(cat.getUUID());
                 startSupernova(level, cat, 55.0F);
+                alreadySpawned[0] = cat;
                 yield null;
             }
             case 30 -> new WitherBoss(EntityType.WITHER, level);
@@ -288,7 +329,9 @@ public final class ExplodingAnimals {
         if (spawned != null) {
             spawned.setPos(x, y, z);
             level.addFreshEntity(spawned);
+            return spawned;
         }
+        return alreadySpawned[0];
     }
 
 }

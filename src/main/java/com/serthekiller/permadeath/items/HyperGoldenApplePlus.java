@@ -50,7 +50,12 @@ public class HyperGoldenApplePlus extends Item {
             Permadeath.state().markChanged();
             PlayerHealth.applyHyperAppleBonus(player);
             player.setHealth(player.getHealth() + 4.0F);
-            player.sendSystemMessage(Component.literal("!Han aumentado tus contenedores!)").withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD));
+            // Plugin text (Fabric showed the broken "!Han aumentado tus contenedores!)").
+            Component message = Component.literal("¡Has obtenido contenedores de vida extra!").withStyle(ChatFormatting.GREEN);
+            if (day >= 60) {
+                message = message.copy().append(Component.literal(" (Hyper Golden Apple " + (consumed + 1) + "/2)").withStyle(ChatFormatting.YELLOW));
+            }
+            player.sendSystemMessage(message);
             level.playSound(null, player.getX(), player.getY(), player.getZ(), SoundEvents.PLAYER_LEVELUP, SoundSource.PLAYERS, 1.0F, 1.0F);
         }
         return super.finishUsingItem(stack, level, entity);

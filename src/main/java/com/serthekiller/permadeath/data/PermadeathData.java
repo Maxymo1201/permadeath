@@ -66,6 +66,7 @@ public final class PermadeathData extends SavedData {
             s.witherRemainingMillis.put(e.getUUID("UUID"), e.getLong("RemainingMillis"));
         }
         s.mikecrackEnabled = tag.getBoolean("Mikecrack");
+        s.mikecrackDisabled = tag.getBoolean("MikecrackDisabled");
         ListTag apples = tag.getList("HyperApples", Tag.TAG_COMPOUND);
         for (int i = 0; i < apples.size(); i++) {
             CompoundTag e = apples.getCompound(i);
@@ -103,6 +104,7 @@ public final class PermadeathData extends SavedData {
         }
         tag.put("WitherTimers", withers);
         tag.putBoolean("Mikecrack", s.mikecrackEnabled);
+        tag.putBoolean("MikecrackDisabled", s.mikecrackDisabled);
         ListTag apples = new ListTag();
         for (Map.Entry<UUID, Integer> e : s.hyperApplesConsumed.entrySet()) {
             CompoundTag c = new CompoundTag();

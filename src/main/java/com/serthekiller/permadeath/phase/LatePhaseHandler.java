@@ -1,6 +1,7 @@
 package com.serthekiller.permadeath.phase;
 
 import com.serthekiller.permadeath.beginning.BeginningDimension;
+import com.serthekiller.permadeath.mechanics.GameplayRules;
 import com.serthekiller.permadeath.mechanics.LockedSlots;
 import com.serthekiller.permadeath.mobs.BeginningMobs;
 import com.serthekiller.permadeath.mobs.EnderMobs;
@@ -127,6 +128,7 @@ public abstract class LatePhaseHandler implements PhaseHandler {
                 Creeper creeper = new Creeper(EntityType.CREEPER, level);
                 creeper.setPos(enderman.getX(), enderman.getY(), enderman.getZ());
                 creeper.setCustomName(Component.literal(enderCreeperName()));
+                creeper.addTag(GameplayRules.NETHER_CREEPER_TAG);
                 level.addFreshEntity(creeper);
                 enderman.discard();
                 return;
@@ -191,7 +193,7 @@ public abstract class LatePhaseHandler implements PhaseHandler {
     protected void handleClassPigman(LivingEntity living, ServerLevel level) {
     }
 
-    /** D50: 1% / D60: 26% of the phantoms become four Ender Ghasts. */
+    /** D50/D60: some phantoms bring four Ender Ghasts. @return true when the phantom was consumed. */
     protected boolean replacePhantomWithGhasts(Phantom phantom, ServerLevel level) {
         return false;
     }
@@ -228,7 +230,7 @@ public abstract class LatePhaseHandler implements PhaseHandler {
     public void onIncomingDamage(LivingIncomingDamageEvent event) {
         LivingEntity entity = event.getEntity();
         DamageSource source = event.getSource();
-        if (handleDamage(entity, source)) {
+        if (handleDamage(entity, source) || Permadeath.day() >= 50 && ExplodingAnimals.onPolarBearHit(entity, source)) {
             event.setCanceled(true);
             return;
         }
@@ -259,13 +261,17 @@ public abstract class LatePhaseHandler implements PhaseHandler {
 
     @Override
     public void onDeath(LivingEntity entity, DamageSource source, ServerLevel level) {
-        SpecialMobs.handleGiantMobArmorDrops(entity, level);
         SpecialMobs.handleStackDrops(entity, level);
     }
 
     @Override
     public void onDrops(LivingDropsEvent event) {
         LivingEntity entity = event.getEntity();
+        if (SpecialMobs.isGoldUltraRavager(entity) && entity.level().dimension() != Level.NETHER) {
+            // Plugin: the gold Ultra Ravager drops nothing outside the Nether.
+            PhaseCommon.clearDrops(event);
+            return;
+        }
         if (!Day30to39Handler.clearsLoot(entity)) {
             return;
         }
@@ -292,6 +298,9 @@ public abstract class LatePhaseHandler implements PhaseHandler {
             LockedSlots.apply(player, day);
         }
         ExplodingAnimals.tick(level);
+        if (level.getGameTime() % 20L == 0L) {
+            SpecialMobs.stackRavagersBreakNetherrack(level);
+        }
         levelTick(level);
         if (--mobPassCooldown <= 0) {
             mobPassCooldown = mobPassInterval();

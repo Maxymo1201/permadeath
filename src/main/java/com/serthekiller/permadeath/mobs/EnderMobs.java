@@ -69,6 +69,16 @@ public final class EnderMobs {
         return isDodgeableD40(source) || source.is(DamageTypeTags.IS_FIRE) || source.is(DamageTypes.DROWN);
     }
 
+    /**
+     * Ender (Quantum) Creepers dodge every damage except melee and the void (plugin EntityTeleport: any cause but
+     * ENTITY_ATTACK and VOID, in every dimension). Fabric only dodged projectiles/explosions (D40, only in the End)
+     * and also fire/drowning from D50, so potions, falls and lava still killed them.
+     */
+    public static boolean isDodgeableEnderCreeper(DamageSource source) {
+        return !(source.is(DamageTypes.PLAYER_ATTACK) || source.is(DamageTypes.MOB_ATTACK) || source.is(DamageTypes.MOB_ATTACK_NO_AGGRO)
+                || source.is(DamageTypes.FELL_OUT_OF_WORLD) || source.is(DamageTypes.GENERIC_KILL));
+    }
+
     public static boolean isEnderGhast(LivingEntity entity) {
         return entity instanceof Ghast && entity.hasCustomName() && entity.getCustomName() != null
                 && entity.getCustomName().getString().toUpperCase().contains("ENDER GHAST");

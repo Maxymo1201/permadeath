@@ -2,8 +2,10 @@ package com.serthekiller.permadeath.mechanics;
 
 import com.mojang.authlib.GameProfile;
 import com.serthekiller.permadeath.PermadeathMod;
+import com.serthekiller.permadeath.core.rules.DayRules;
 import com.serthekiller.permadeath.beginning.BeginningDimension;
 import com.serthekiller.permadeath.data.CustomMessagesData;
+import com.serthekiller.permadeath.data.DeathRecordsData;
 import com.serthekiller.permadeath.data.SurvivalAchievementData;
 import com.serthekiller.permadeath.progression.Permadeath;
 import com.serthekiller.permadeath.registry.ModSounds;
@@ -11,6 +13,7 @@ import com.serthekiller.permadeath.util.ServerScheduler;
 import com.serthekiller.permadeath.util.Texts;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
@@ -25,8 +28,11 @@ import net.minecraft.server.players.UserBanListEntry;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.ItemLore;
 import net.minecraft.world.item.component.ResolvableProfile;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
@@ -35,6 +41,11 @@ import net.minecraft.world.level.block.SkullBlock;
 import net.minecraft.world.level.block.entity.SkullBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
+import net.neoforged.neoforge.event.entity.player.ItemEntityPickupEvent;
+
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
 
 /**
  * Player death (Fabric DeathHandler): spectator mode, "¡Permadeath!" titles, sounds, bedrock + fence + head
@@ -43,14 +54,19 @@ import net.minecraft.world.phys.AABB;
  */
 public final class DeathHandler {
     public static final String DEATH_TAG = "muerte1";
+    private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm:ss");
 
     private DeathHandler() {
     }
 
     /** Called from LivingDeathEvent; the work is done at the end of the tick, after the vanilla death logic. */
-    public static void onPlayerDeath(ServerPlayer player) {
+    public static void onPlayerDeath(ServerPlayer player, DamageSource source) {
         // The day of the death (not of the end of the tick) decides the Death Train duration and the sounds.
         int day = Permadeath.day();
+        LocalDateTime now = LocalDateTime.now();
+        DeathRecordsData.get(player.server).put(player.getUUID(), new DeathRecordsData.Record(player.getName().getString(),
+                now.format(DATE), now.format(TIME), DeathRecordsData.causeLabel(source)));
         ServerScheduler.schedule(0, () -> {
             if (player.isAlive() || !Permadeath.isRunning()) {
                 return;
@@ -71,9 +87,9 @@ public final class DeathHandler {
         sendTitles(server, name);
         broadcastSound(server, SoundEvents.BLAZE_DEATH, 100.0F, 0.3F);
         ServerScheduler.schedule(100, () -> broadcastSound(server, SoundEvents.SKELETON_HORSE_DEATH, 100.0F, 1.0F));
-        if (day >= 30) {
-            broadcastSound(server, ModSounds.PERMADEATH.get(), 100.0F, 1.0F);
-        }
+        // The Permadeath sound plays on every death, once per player (plugin "pdc_muerte"); Fabric only played it
+        // from D30, twice.
+        broadcastSound(server, ModSounds.PERMADEATH.get(), 100.0F, 1.0F);
         createMonument(level, player);
         sendMessages(server, name, player, deathPos);
 
@@ -82,9 +98,6 @@ public final class DeathHandler {
                 if (player.connection != null && !player.isAlive()) {
                     player.connection.handleClientCommand(new ServerboundClientCommandPacket(ServerboundClientCommandPacket.Action.PERFORM_RESPAWN));
                 }
-                if (day >= 30) {
-                    level.playSound(null, deathPos, ModSounds.PERMADEATH.get(), SoundSource.MASTER, 100.0F, 1.0F);
-                }
             } catch (RuntimeException e) {
                 PermadeathMod.LOGGER.error("[Permadeath] Automatic respawn failed", e);
             }
@@ -92,6 +105,12 @@ public final class DeathHandler {
         scheduleBan(server, player.getGameProfile());
 
         long added = DeathTrain.trigger(server, day);
+        if (DayRules.deathTrainDisablesRegeneration(day)) {
+            // Plugin: announced on every D50+ death, before the Death Train message.
+            Texts.broadcast(server, Component.literal("Permadeath ").withStyle(ChatFormatting.RED)
+                    .append(Component.literal("➤ ").withStyle(ChatFormatting.GRAY))
+                    .append(Component.literal("¡Ha comenzado el modo UHC!").withStyle(ChatFormatting.YELLOW)));
+        }
         ServerScheduler.schedule(100, () -> Texts.broadcast(server,
                 Component.literal("¡Comienza el Death Train con duración de " + DeathTrain.durationText(added) + "!").withStyle(ChatFormatting.RED)));
         PermadeathMod.LOGGER.info("[Permadeath] Player {} died on day {} - Permadeath applied", name, day);
@@ -136,6 +155,37 @@ public final class DeathHandler {
                 }
             });
         });
+    }
+
+    /**
+     * The head of a permabanned player gets the plugin trophy name and lore (PlayerDataManager#craftHead) when it
+     * is picked up: "HA SIDO PERMABANEADO", date, time and cause of death.
+     */
+    public static void onItemPickup(ItemEntityPickupEvent.Pre event) {
+        if (event.getPlayer().level().isClientSide() || !Permadeath.isRunning()) {
+            return;
+        }
+        ItemStack stack = event.getItemEntity().getItem();
+        ResolvableProfile profile = stack.get(DataComponents.PROFILE);
+        if (!stack.is(Items.PLAYER_HEAD) || profile == null || profile.id().isEmpty() || stack.has(DataComponents.LORE)) {
+            return;
+        }
+        DeathRecordsData.Record record = DeathRecordsData.get(event.getPlayer().getServer()).get(profile.id().get());
+        if (record == null) {
+            return;
+        }
+        stack.set(DataComponents.CUSTOM_NAME, plain("§c§l" + record.name()));
+        stack.set(DataComponents.LORE, new ItemLore(List.of(
+                plain("§c§lHA SIDO PERMABANEADO"),
+                plain(" "),
+                plain("§7Fecha del Baneo: §c" + record.date()),
+                plain("§7Hora del Baneo: §c" + record.time()),
+                plain("§7Causa de Muerte: §f" + record.cause()))));
+        event.getItemEntity().setItem(stack);
+    }
+
+    private static Component plain(String legacyText) {
+        return Component.literal(legacyText).withStyle(style -> style.withItalic(false));
     }
 
     private static void placeMonument(ServerLevel level, BlockPos base, BlockPos skull, int rotation, GameProfile profile) {

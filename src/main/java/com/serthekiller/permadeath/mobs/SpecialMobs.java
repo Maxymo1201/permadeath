@@ -2,6 +2,7 @@ package com.serthekiller.permadeath.mobs;
 
 import com.serthekiller.permadeath.PermadeathMod;
 import com.serthekiller.permadeath.beginning.BeginningDimension;
+import com.serthekiller.permadeath.core.rules.DayRules;
 import com.serthekiller.permadeath.progression.Permadeath;
 import com.serthekiller.permadeath.registry.ModBlocks;
 import com.serthekiller.permadeath.registry.ModItems;
@@ -17,6 +18,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.BiomeTags;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.EntityType;
@@ -52,8 +54,10 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biomes;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BannerPatternLayers;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.event.EventHooks;
 
 import java.util.Optional;
@@ -67,6 +71,8 @@ import static com.serthekiller.permadeath.util.MobUtil.ench;
 public final class SpecialMobs {
     public static final String PROCESSED_STACK = "ProcessedStack";
     public static final String ULTRA_RAVAGER = "UltraRavager";
+    /** Gold "Ultra Ravager" of D50+ (converted farm animals and natural ravagers), see {@link #makeGoldUltraRavager}. */
+    public static final String GOLD_ULTRA_RAVAGER = "permadeath:ultra_ravager_gold";
     public static final String CARLOS_PIGMAN = "CarlosPigman";
     public static final String JESS_VILLAGER = "JessVillager";
     public static final String GIANT_TAG = "permadeath:giant_zombie";
@@ -79,11 +85,14 @@ public final class SpecialMobs {
 
     // ------------------------------------------------------------------------------------------- Ultra Ravager
 
-    /** Ultra Ravager (500 HP) ridden by "Carlos el Esclavo" ridden by "Jess la Emperatriz" (Fabric Ravagercreator). */
+    /**
+     * Ultra Ravager (240 HP) ridden by "Carlos el Esclavo" (150 HP) ridden by "Jess la Emperatriz" (500 HP), the
+     * plugin numbers (Fabric Ravagercreator had the ravager and Jess swapped: 500 / 240).
+     */
     public static void setupUltraRavagerStack(Ravager ravager, ServerLevel level) {
         ravager.addTag(PROCESSED_STACK);
         ravager.addTag(ULTRA_RAVAGER);
-        MobUtil.setMaxHealth(ravager, 500.0);
+        MobUtil.setMaxHealth(ravager, 240.0);
         ravager.setCustomName(Component.literal("Ultra Ravager").withStyle(ChatFormatting.GREEN));
         ravager.setCustomNameVisible(false);
         ravager.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, MobUtil.INFINITE, 1, false, false));
@@ -108,7 +117,7 @@ public final class SpecialMobs {
         Villager villager = new Villager(EntityType.VILLAGER, level);
         villager.addTag(PROCESSED_STACK);
         villager.addTag(JESS_VILLAGER);
-        MobUtil.setMaxHealth(villager, 240.0);
+        MobUtil.setMaxHealth(villager, 500.0);
         villager.setCustomName(Component.literal("Jess la Emperatriz").withStyle(ChatFormatting.GREEN));
         villager.setCustomNameVisible(false);
         villager.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.GOLDEN_APPLE));
@@ -118,14 +127,67 @@ public final class SpecialMobs {
         villager.startRiding(pigman, true);
     }
 
-    /** Drops of the stack (Fabric handleemperatrisdrop): totem, 32 gold ingots, 2 golden apples. */
+    /**
+     * Drops of the stack (plugin): Carlos 32 gold ingots and Jess 2 golden apples (100 %, 33 % on D60). The stack
+     * ravager drops nothing (Fabric gave a guaranteed totem, a totem farm that bypassed the totem tables). The gold
+     * Ultra Ravager drops a totem only when it dies in the Nether (100 %, 33 % on D60).
+     */
     public static void handleStackDrops(LivingEntity entity, ServerLevel level) {
-        if (entity instanceof Ravager && entity.getTags().contains(ULTRA_RAVAGER)) {
-            drop(level, entity, new ItemStack(Items.TOTEM_OF_UNDYING));
-        } else if (entity instanceof ZombifiedPiglin && entity.getTags().contains(CARLOS_PIGMAN)) {
-            drop(level, entity, new ItemStack(Items.GOLD_INGOT, 32));
+        int chance = Permadeath.day() >= 60 ? 33 : 100;
+        if (entity instanceof ZombifiedPiglin && entity.getTags().contains(CARLOS_PIGMAN)) {
+            if (level.random.nextInt(100) < chance) {
+                drop(level, entity, new ItemStack(Items.GOLD_INGOT, 32));
+            }
         } else if (entity instanceof Villager && entity.getTags().contains(JESS_VILLAGER)) {
-            drop(level, entity, new ItemStack(Items.GOLDEN_APPLE, 2));
+            if (level.random.nextInt(100) < chance) {
+                drop(level, entity, new ItemStack(Items.GOLDEN_APPLE, 2));
+            }
+        } else if (isGoldUltraRavager(entity) && level.dimension() == Level.NETHER && level.random.nextInt(100) < chance) {
+            drop(level, entity, new ItemStack(Items.TOTEM_OF_UNDYING));
+        }
+    }
+
+    /**
+     * D40+ (plugin tickWorlds): every second, outside the End, the stack ravager breaks the netherrack around the
+     * first 5 blocks it is looking at, so it can dig its way towards the players in the Nether.
+     */
+    public static void stackRavagersBreakNetherrack(ServerLevel level) {
+        if (level.dimension() == Level.END) {
+            return;
+        }
+        for (Ravager ravager : level.getEntities(EntityType.RAVAGER, r -> r.isAlive() && r.getTags().contains(ULTRA_RAVAGER))) {
+            Vec3 eye = ravager.getEyePosition();
+            Vec3 look = ravager.getViewVector(1.0F);
+            for (int step = 1; step <= 10; step++) {
+                BlockPos sight = BlockPos.containing(eye.add(look.scale(step * 0.5)));
+                for (BlockPos pos : BlockPos.betweenClosed(sight.offset(-1, -1, -1), sight)) {
+                    if (level.getBlockState(pos).is(Blocks.NETHERRACK)) {
+                        level.destroyBlock(pos, false, ravager);
+                    }
+                }
+            }
+        }
+    }
+
+    /** D50+ gold "Ultra Ravager" (plugin): 500 HP, Speed II, Strength II, visible name. */
+    public static void makeGoldUltraRavager(Ravager ravager) {
+        ravager.addTag(GOLD_ULTRA_RAVAGER);
+        MobUtil.setMaxHealth(ravager, 500.0);
+        ravager.setCustomName(Component.literal("Ultra Ravager").withStyle(ChatFormatting.GOLD));
+        ravager.setCustomNameVisible(true);
+        ravager.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, MobUtil.INFINITE, 1, false, false));
+        ravager.addEffect(new MobEffectInstance(MobEffects.DAMAGE_BOOST, MobUtil.INFINITE, 1, false, false));
+    }
+
+    public static boolean isGoldUltraRavager(LivingEntity entity) {
+        return entity instanceof Ravager && entity.getTags().contains(GOLD_ULTRA_RAVAGER);
+    }
+
+    /** D25-39: every ravager gets Speed II and Strength I (plugin). */
+    public static void buffEarlyRavager(LivingEntity entity) {
+        if (entity instanceof Ravager ravager && !ravager.getTags().contains(PROCESSED_STACK) && MobTracking.tryClaim(ravager, "ravager_buff_d25")) {
+            ravager.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, MobUtil.INFINITE, 1, false, true));
+            ravager.addEffect(new MobEffectInstance(MobEffects.DAMAGE_BOOST, MobUtil.INFINITE, 0, false, true));
         }
     }
 
@@ -156,8 +218,9 @@ public final class SpecialMobs {
     }
 
     /**
-     * D50+: zombies in plains under open sky become a Zombie Gigante (5%, 20% from D60; attack 30). Fabric
-     * re-rolled every time the zombie was loaded; the roll is now done once per zombie.
+     * D50+: zombies in plains under open sky become a Zombie Gigante (plugin: 1/500, 1/125 from D60, attack 2000;
+     * Fabric used 5 % / 20 % and attack 30). Fabric re-rolled every time the zombie was loaded; the roll is now
+     * done once per zombie.
      */
     public static boolean shouldBecomeGiant(LivingEntity entity, ServerLevel level) {
         if (!(entity instanceof Zombie) || entity instanceof Drowned || entity instanceof ZombifiedPiglin) {
@@ -173,15 +236,14 @@ public final class SpecialMobs {
         if (!(entity instanceof Mob mob) || !MobTracking.tryClaim(mob, "giant_roll")) {
             return false;
         }
-        float chance = Permadeath.day() >= 60 ? 0.2F : 0.05F;
-        return level.random.nextFloat() <= chance;
+        return level.random.nextInt(DayRules.giantOneIn(Permadeath.day())) == 0;
     }
 
     public static void spawnGiantReplacing(LivingEntity zombie, ServerLevel level) {
         Giant giant = new Giant(EntityType.GIANT, level);
         giant.setPos(zombie.getX(), zombie.getY(), zombie.getZ());
         giant.setYRot(zombie.getYRot());
-        configureGiant(giant, 30.0);
+        configureGiant(giant, 2000.0);
         level.addFreshEntity(giant);
         zombie.discard();
     }
@@ -202,7 +264,7 @@ public final class SpecialMobs {
     public static void handleGiantDrops(LivingEntity entity, ServerLevel level) {
         if (entity instanceof Giant && entity.getTags().contains(GIANT_TAG) && Permadeath.day() < 60) {
             ItemStack bow = MobUtil.enchanted(level, new ItemStack(Items.BOW), ench(Enchantments.POWER, 10));
-            bow.set(DataComponents.CUSTOM_NAME, Component.literal("Arco de Gigante"));
+            bow.set(DataComponents.CUSTOM_NAME, Component.literal("Arco de Gigante").withStyle(ChatFormatting.AQUA));
             ItemEntity item = new ItemEntity(level, entity.getX(), entity.getY(), entity.getZ(), bow);
             item.setExtendedLifetime();
             level.addFreshEntity(item);
@@ -213,7 +275,7 @@ public final class SpecialMobs {
 
     /** Turns a wither skeleton into the "Wither Emperador" (80 HP, attack 18, Power C / Punch V bow, banner). */
     public static void makeEmperor(WitherSkeleton emperor, ServerLevel level) {
-        emperor.setCustomName(Component.literal("§eWither Emperador"));
+        emperor.setCustomName(Component.literal("§6Wither Skeleton Emperador"));
         emperor.setCustomNameVisible(false);
         emperor.addTag(EMPEROR_TAG);
         MobUtil.setMaxHealth(emperor, 80.0);
@@ -233,8 +295,9 @@ public final class SpecialMobs {
     }
 
     /**
-     * D50+: wither skeletons in nether biomes become emperors (5%, 20% from D60). Fabric re-rolled on every
-     * load and reset the emperor health to 80; the roll is now done once per wither skeleton.
+     * D50+: wither skeletons in nether biomes become emperors (plugin: 1/50, 1/13 from D60; Fabric 5 % / 20 %).
+     * Fabric re-rolled on every load and reset the emperor health to 80; the roll is now done once per wither
+     * skeleton.
      */
     public static boolean tryMakeEmperor(LivingEntity entity, ServerLevel level) {
         if (!(entity instanceof WitherSkeleton skeleton) || skeleton.getTags().contains(EMPEROR_TAG)) {
@@ -246,8 +309,7 @@ public final class SpecialMobs {
         if (!MobTracking.tryClaim(skeleton, "emperor_roll")) {
             return false;
         }
-        float chance = Permadeath.day() >= 60 ? 0.2F : 0.05F;
-        if (level.random.nextFloat() > chance) {
+        if (level.random.nextInt(DayRules.emperorOneIn(Permadeath.day())) != 0) {
             return false;
         }
         makeEmperor(skeleton, level);
@@ -432,46 +494,35 @@ public final class SpecialMobs {
                     MobUtil.name(ghast, "§6Ghast Demoníaco");
                 }
             } else if (!ghast.hasCustomName()) {
-                if (level.random.nextInt(100) > 75) {
-                    MobUtil.setMaxHealth(ghast, 40 + level.random.nextInt(21));
-                    MobUtil.name(ghast, "§6Ghast Demoníaco");
-                } else {
-                    MobUtil.setMaxHealth(ghast, 60.0);
-                    MobUtil.name(ghast, "§6Demonio Flotante");
-                }
+                // Both variants have 40-60 HP (plugin; Fabric gave the Demonio Flotante a fixed 60).
+                MobUtil.setMaxHealth(ghast, 40 + level.random.nextInt(21));
+                MobUtil.name(ghast, level.random.nextInt(100) > 75 ? "§6Ghast Demoníaco" : "§6Demonio Flotante");
             }
         }
     }
 
     /**
-     * D25+ armour drops of the giant mobs: GIGA Slime → netherite chestplate (10%), GIGA MagmaCube → leggings
-     * (10%), Ghast Demoníaco → boots (20%). Fabric checked "day + 1 &gt;= 25" but was only called from D25.
+     * Custom netherite armour drops, plugin rules (runNetheriteCheck): only on D25-29, only for mobs killed by a
+     * player, 10 % per piece - cave spider → helmet, GIGA Slime → chestplate, GIGA MagmaCube → leggings, Ghast
+     * Demoníaco → boots. Fabric used 20 % for the helmet and the boots, kept dropping from D25 to D60 and did not
+     * require a player kill (mob farms).
      */
-    public static void handleGiantMobArmorDrops(LivingEntity entity, ServerLevel level) {
-        if (Permadeath.day() < 25 || !entity.hasCustomName()) {
+    public static void handleNetheriteArmorDrops(LivingEntity entity, DamageSource source, ServerLevel level) {
+        if (!DayRules.netheriteArmorDropDay(Permadeath.day()) || !(source.getEntity() instanceof Player)) {
             return;
         }
-        int roll = level.random.nextInt(100);
-        float chance = 0.1F;
         ItemStack piece = null;
-        if (entity instanceof Slime && !(entity instanceof MagmaCube) && MobUtil.nameContains(entity, "GIGA Slime")) {
+        if (entity instanceof CaveSpider) {
+            piece = new ItemStack(ModItems.NETHERITE_HELMET.get());
+        } else if (entity instanceof Slime && !(entity instanceof MagmaCube) && MobUtil.nameContains(entity, "GIGA Slime")) {
             piece = new ItemStack(ModItems.NETHERITE_CHESTPLATE.get());
         } else if (entity instanceof MagmaCube && MobUtil.nameContains(entity, "GIGA MagmaCube")) {
             piece = new ItemStack(ModItems.NETHERITE_LEGGINGS.get());
         } else if (entity instanceof Ghast && MobUtil.nameContains(entity, "Demoníaco")) {
             piece = new ItemStack(ModItems.NETHERITE_BOOTS.get());
-            chance = 0.2F;
         }
-        if (piece != null && roll < chance * 100.0F) {
+        if (piece != null && level.random.nextInt(100) < DayRules.NETHERITE_ARMOR_DROP_PERCENT) {
             drop(level, entity, piece);
-        }
-    }
-
-    /** D25-30: cave spiders drop the netherite helmet with 20% chance (Fabric day25Handler). */
-    public static void handleCaveSpiderHelmetDrop(LivingEntity entity, ServerLevel level) {
-        int day = Permadeath.day();
-        if (day >= 25 && day <= 30 && entity instanceof CaveSpider && level.random.nextInt(100) < 20) {
-            drop(level, entity, new ItemStack(ModItems.NETHERITE_HELMET.get()));
         }
     }
 

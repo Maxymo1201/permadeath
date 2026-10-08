@@ -129,4 +129,58 @@ class RulesTest {
         assertEquals(50, DayRules.recipeBucket(59));
         assertEquals(60, DayRules.recipeBucket(60));
     }
+
+    @ParameterizedTest(name = "drowning hit D{0} = {1}")
+    @CsvSource({"0,-1", "49,-1", "50,5", "59,5", "60,10"})
+    void drowningDamage(int day, float damage) {
+        assertEquals(damage, DayRules.drowningDamage(day));
+    }
+
+    @Test
+    void deathTrainFireResistanceOnlyD50to59() {
+        assertFalse(DayRules.deathTrainFireResistance(49));
+        assertTrue(DayRules.deathTrainFireResistance(50));
+        assertTrue(DayRules.deathTrainFireResistance(59));
+        assertFalse(DayRules.deathTrainFireResistance(60));
+    }
+
+    @Test
+    void pluginPlayerNumbers() {
+        assertEquals(60, DayRules.randomLevitationTicks(0));
+        assertEquals(380, DayRules.randomLevitationTicks(16));
+        assertEquals(10000, DayRules.RANDOM_LEVITATION_ONE_IN);
+        assertEquals(20, DayRules.RANDOM_LEVITATION_PERIOD_TICKS);
+        assertEquals(120, DayRules.D60_PEARL_COOLDOWN_TICKS);
+        assertEquals(600, DayRules.D60_SOUL_SAND_SLOWNESS_TICKS);
+        assertEquals(10, DayRules.D50_PHANTOM_RESET_PERCENT);
+    }
+
+    @ParameterizedTest(name = "mobs D{0}")
+    @CsvSource({
+            // day, phantom size, ghast roll, giant 1/N, emperor 1/N, pigman class /99
+            "40,9,1,500,50,5",
+            "49,9,1,500,50,5",
+            "50,18,1,500,50,20",
+            "59,18,1,500,50,20",
+            "60,18,25,125,13,20"
+    })
+    void pluginMobNumbers(int day, int phantomSize, int ghastRoll, int giant, int emperor, int pigman) {
+        assertEquals(phantomSize, DayRules.phantomSize(day));
+        assertEquals(ghastRoll, DayRules.phantomGhastRoll(day));
+        assertEquals(giant, DayRules.giantOneIn(day));
+        assertEquals(emperor, DayRules.emperorOneIn(day));
+        assertEquals(pigman, DayRules.pigmanClassChance(day));
+    }
+
+    @Test
+    void netheriteArmorDropsOnlyD25to29() {
+        assertFalse(DayRules.netheriteArmorDropDay(24));
+        assertTrue(DayRules.netheriteArmorDropDay(25));
+        assertTrue(DayRules.netheriteArmorDropDay(29));
+        assertFalse(DayRules.netheriteArmorDropDay(30));
+        assertEquals(10, DayRules.NETHERITE_ARMOR_DROP_PERCENT);
+        assertEquals(600, DayRules.SUPERNOVA_FUSE_TICKS);
+        assertEquals(200.0F, DayRules.SUPERNOVA_POWER);
+        assertEquals(8.0, DayRules.HOSTILE_PASSIVE_ATTACK_DAMAGE);
+    }
 }
