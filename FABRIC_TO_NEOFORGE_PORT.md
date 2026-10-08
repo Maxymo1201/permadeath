@@ -85,7 +85,10 @@ Para cada pieza del mod Fabric se indica qué hace ahora el port y por qué. Pre
 | `WitherShieldBreakMixin` | D60: el Wither ignora el escudo y lo desactiva | `LivingShieldBlockEvent` |
 
 **Mixins que quedan: 4** (`ChunkGeneratorMixin`, `EndGatewayBlockMixin`, `MobMixin`, `ShulkerMixin`), todos
-`@Inject` en `HEAD` con `defaultRequire = 1`. Si cambia un objetivo, el arranque falla de forma visible en
+`@Inject` en `HEAD` con `defaultRequire = 1`. El port añade un quinto, `CrafterBlockMixin` (`RETURN` de
+`CrafterBlock#getPotentialResults`): el Crafter vanilla no lanza `ItemCraftedEvent`, así que se le niegan las
+cuatro recetas con coste extra (Hyper/Super Golden Apple+, Life Orb y Reliquia del Comienzo), que se siguen
+fabricando a mano (PERMADEATH_AUDIT.md §6). Si cambia un objetivo, el arranque falla de forma visible en
 lugar de seguir sin la funcionalidad. La única excepción es el empuje del shulker montado al abrirse
 (`onPeekAmountChange`, `require = 0`): es un detalle menor y nunca debe impedir que el servidor arranque.
 

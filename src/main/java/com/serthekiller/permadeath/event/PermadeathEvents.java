@@ -200,6 +200,8 @@ public final class PermadeathEvents {
         MinecraftServer server = event.getServer();
         if (Permadeath.isRunning()) {
             DayController.onServerTick(server);
+            // The copy of a mob that changed dimension joins within the same tick: nothing older is still pending.
+            GoalRestorer.reset();
             int day = Permadeath.day();
             DeathTrain.tick(server);
             LifeOrb.tick(server);
@@ -268,8 +270,10 @@ public final class PermadeathEvents {
         // Deferred part: phase logic may spawn, replace or discard entities.
         ServerScheduler.schedule(0, () -> {
             PhaseHandler handler = phase();
-            // isAddedToLevel: a join cancelled by a later listener or refused (duplicate UUID) is not processed.
-            if (handler != null && entity.isAddedToLevel() && !entity.isRemoved() && entity.level() == level) {
+            // Only an instance the level really holds: a join cancelled by a later listener or refused (duplicate UUID,
+            // also for chunk loads, where isAddedToLevel is set anyway) is not processed.
+            if (handler != null && entity.isAddedToLevel() && !entity.isRemoved() && entity.level() == level
+                    && level.getEntity(entity.getUUID()) == entity) {
                 handler.onEntityJoin(entity, level, loadedFromDisk);
             }
         });
@@ -386,7 +390,9 @@ public final class PermadeathEvents {
     }
 
     private static void onTravelToDimension(EntityTravelToDimensionEvent event) {
-        if (!event.isCanceled() && !event.getEntity().level().isClientSide() && Permadeath.isRunning()) {
+        // Only real dimension changes recreate the entity (an End gateway inside the End moves the same entity).
+        if (!event.isCanceled() && !event.getEntity().level().isClientSide() && Permadeath.isRunning()
+                && event.getDimension() != event.getEntity().level().dimension()) {
             GoalRestorer.onTravel(event.getEntity());
         }
     }
@@ -394,13 +400,17 @@ public final class PermadeathEvents {
     private static void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer player && Permadeath.isRunning()) {
             LifeOrb.onLogout(player);
-            ShulkerShellEvent.onLogout(player);
+            ShulkerShellEvent.removePlayer(player);
         }
     }
 
     private static void onClone(PlayerEvent.Clone event) {
         if (event.getEntity() instanceof ServerPlayer player && Permadeath.isRunning()) {
             PlayerHealth.applyHyperAppleBonus(player);
+            if (event.getOriginal() instanceof ServerPlayer original) {
+                LifeOrb.onRespawn(original);
+                ShulkerShellEvent.removePlayer(original);
+            }
         }
     }
 

@@ -9,11 +9,11 @@ Minecraft 1.21.1.
 | Prueba | Resultado |
 |---|---|
 | `./gradlew clean build`: compilación, AT validados, tests del núcleo, los 2 jars y `verifyProductionJars` | **OK** |
-| Tests unitarios del núcleo (`./gradlew clean build`) | **95/95 OK** |
-| GameTests GAME60 (`./gradlew runGameTestServer -PpermadeathMode=GAME60`) | **29/29 OK** |
-| GameTests REAL30 (`./gradlew runGameTestServer -PpermadeathMode=REAL30`) | **29/29 OK** |
-| GameTests con mundos limpios (GAME60 y REAL30, mundo `run/world` borrado antes de cada uno) | **29/29 + 29/29 OK** |
-| Los 2 GameTests nuevos fallan con las correcciones desactivadas (comprobación negativa, GAME60) | **2/2 fallan como se espera** |
+| Tests unitarios del núcleo (`./gradlew clean build`) | **96/96 OK** |
+| GameTests GAME60 (`./gradlew runGameTestServer -PpermadeathMode=GAME60`) | **34/34 OK** |
+| GameTests REAL30 (`./gradlew runGameTestServer -PpermadeathMode=REAL30`) | **34/34 OK** |
+| GameTests con mundos limpios (GAME60 y REAL30, mundo `run/world` borrado antes de cada uno) | **34/34 + 34/34 OK** |
+| Los 7 GameTests nuevos fallan con sus correcciones desactivadas (comprobación negativa, GAME60) | **7/7 fallan como se espera** |
 | Cambio de modo GAME60 → REAL30 sobre el mismo mundo (GameTests REAL30 sobre el mundo de GAME60) | **OK**: conserva el D60 y reancla el calendario |
 | Servidor dedicado con el jar de producción, arranque + reinicio + cofres de The Beginning en el D60 (`tools/server-smoke-test.sh`) | **GAME60 OK, REAL30 OK** |
 | Inspección de los jars de producción | **OK** |
@@ -23,8 +23,8 @@ Minecraft 1.21.1.
 `./gradlew clean build` → `BUILD SUCCESSFUL`:
 
 ```
-[verifyProductionJars] permadeath-GAME60-neoforge-1.21.1.jar: OK (482 entries, profile=GAME60)
-[verifyProductionJars] permadeath-REAL30-neoforge-1.21.1.jar: OK (482 entries, profile=REAL30)
+[verifyProductionJars] permadeath-GAME60-neoforge-1.21.1.jar: OK (483 entries, profile=GAME60)
+[verifyProductionJars] permadeath-REAL30-neoforge-1.21.1.jar: OK (483 entries, profile=REAL30)
 ```
 
 * `createMinecraftArtifacts` aplica y valida las 7 entradas del access transformer
@@ -35,25 +35,25 @@ Minecraft 1.21.1.
 
 ## 2. Tests unitarios del núcleo
 
-`./gradlew clean build` ejecuta `coreTest` desde cero → 95 tests, 0 fallos. Informes JUnit en `build/test-results/coreTest`.
+`./gradlew clean build` ejecuta `coreTest` desde cero → 96 tests, 0 fallos. Informes JUnit en `build/test-results/coreTest`.
 
 | Clase | Tests | Casos |
 |---|---|---|
-| `GameDayProgressionClockTest` | 13 | Límites D9→D10, D19→D20, D24→D25, D29→D30, D39→D40, D49→D50 y D59→D60; los saltos ejecutan cada hito intermedio una vez; un mundo existente en el día 347 empieza en D0; dormir avanza el calendario; un rollback de `/time` nunca retrocede; `setDay` reancla de forma segura; mover un mundo REAL30 a GAME60 conserva el día |
+| `GameDayProgressionClockTest` | 14 | Límites D9→D10, D19→D20, D24→D25, D29→D30, D39→D40, D49→D50 y D59→D60; los saltos ejecutan cada hito intermedio una vez; un mundo existente en el día 347 empieza en D0; dormir avanza el calendario; un rollback de `/time` nunca retrocede y no congela el calendario (`/time set day` en el D20 → D21 un día de Minecraft después); `setDay` reancla de forma segura; mover un mundo REAL30 a GAME60 conserva el día |
 | `RealTimeProgressionClockTest` | 24 | T+0 h → D0; 119 h 59 m → D9; 120 h → D10; 239 h 59 m → D19; 240 h → D20; 299 h 59 m → D24; 300 h → D25; 359 h 59 m → D29; 360 h → D30; 479 h 59 m → D39; 480 h → D40; 599 h 59 m → D49; 600 h → D50; 719 h 59 m → D59; 720 h → D60; 721 h y 1000 h → D60. Independiente de los TPS, de la zona horaria y del horario de verano. El tiempo con el servidor apagado cuenta. Un retroceso del reloj del sistema no hace retroceder el día. Instantes de hito exactos. `setDay` coherente y persistente. Mover un mundo GAME60 a REAL30 conserva el día |
 | `LegacyFabricStateTest` | 2 | Lee los ficheros de Fabric (fecha, tormenta, wither, Life Orb, Mikecrack, manzanas) y los aplica en GAME60; en REAL30 conserva el día y lo limita a 60 |
 | `RulesTest` | 56 | Tótems D0/D29/D30/D39/D40/D49/D50/D59/D60 (fallo % y número de tótems), límites de la tirada y prueba de humo con RNG; mobs 70/140; ahogamiento ×1/×5/×10 y golpes de 5/10; ceguera D39 = 0, D40-49 = 1/10000, D50-60 = 1/5000; duraciones y buffs del Death Train (coinciden con PermaDeathCore) y Resistencia al fuego solo D50-59; umbrales de PvP, End, manzanas y vida máxima; números del plugin (levitación, perlas, arena de almas, camas, tamaño de phantoms, gigantes, emperadores, clases de pigman, netherita D25-29, supernova, daño 8) |
 
 ## 3. GameTests (ejecutados en un servidor NeoForge 21.1.256 real)
 
-`gametest/PermadeathGameTests`: 29 tests con la plantilla `permadeath:gametest_empty`. Cada lote fija el día
+`gametest/PermadeathGameTests`: 34 tests con la plantilla `permadeath:gametest_empty`. Cada lote fija el día
 en `@BeforeBatch` con `ProgressionClock#setDay`, lo mismo que hace `/permadeath setday`. Los jugadores simulados se
 conectan con una conexión en memoria configurada para la red de NeoForge.
 
 | Lote | Test | Comprueba | GAME60 | REAL30 |
 |---|---|---|---|---|
 | d0 | `hostileMobCapVanillaBeforeD10` | Límite de monstruos 70 | OK | OK |
-| d0 | `drowningVanillaBeforeD50` | Cerdo sumergido: ≥ 280 de aire a los 10 ticks | OK | OK |
+| d0 | `drowningVanillaBeforeD50` | Cerdo sumergido: pierde 1-10 de aire entre los ticks 10 y 20 | OK | OK |
 | d0 | `oneTotemSavesBeforeD30` | Un tótem salva y se consume | OK | OK |
 | d0 | `endClosedBeforeD30` | Viaje al End cancelado | OK | OK |
 | d10 | `calendarPhaseFollowsDay` | Día 10 y fase D10-19 | OK | OK |
@@ -64,9 +64,14 @@ conectan con una conexión en memoria configurada para la red de NeoForge.
 | d40 | `oneTotemIsNotEnoughOnD40` | Con un tótem el jugador muere y el tótem se consume | OK | OK |
 | d40 | `maxHealthPenaltyAndLockedSlotsOnD40` | 12 de vida máxima, hueco 4 bloqueado, PvP activo | OK | OK |
 | d40 | `numberKeySwapIntoLockedSlotReturnsTheItemToTheChest` | Tecla numérica desde un cofre hacia el hueco bloqueado 4: el hueco vuelve a bloquearse, los 7 diamantes vuelven al cofre y no cae nada al suelo | OK | OK |
+| d40 | `zombifiedPiglinKeepsItsAttackWhenTurnedHostile` | Tras la conversión a hostil el ataque sigue ≥ 5 (vanilla o clase de pigman) | OK | OK |
+| d40 | `relicOnTheCursorKeepsTheSlotsUnlocked` | Inventario lleno con la Reliquia del Fin en el cursor: el hueco 4 y la mano secundaria conservan sus objetos y no cae nada | OK | OK |
+| d40 | `spectatorDeathIsNoNewPermadeath` | Un espectador muerto por `/kill` no genera registro de muerte ni la etiqueta de muerte | OK | OK |
+| d40 | `crafterRefusesTheSpecialRecipes` | La Super Golden Apple+ se fabrica a mano, pero el Crafter no la acepta | OK | OK |
+| d50 | `enderCreeperReplacementKeepsItsNameOnD50` | 8 Ender Creepers nombrados antes de su entrada diferida conservan el nombre y son invisibles | OK | OK |
 | d40tnt | `dragonTntExplodesOnceWithoutBreakingBlocks` | La TNT del dragón explota sin romper los 5 bloques de piedra que la rodean (sin la explosión vanilla de potencia 4) | OK | OK |
 | d60 | `calendarNeverGoesBeyondD60` | `setDay(70)` → 60 | OK | OK |
-| d60 | `drowningTenTimesFasterOnD60` | ≤ 230 de aire a los 10 ticks (vanilla ≈ 290) | OK | OK |
+| d60 | `drowningTenTimesFasterOnD60` | Pierde 80-100 de aire entre los ticks 10 y 20 (vanilla 10) | OK | OK |
 | d60 | `chestLootEmptyOnD60` | El loot de mazmorra está vacío | OK | OK |
 | d60 | `maxHealthPenaltyOnD60` | 4 de vida máxima | OK | OK |
 | d20 | `villageIronGolemHuntsPlayersFromD20` | Un gólem de aldea toma al jugador como objetivo | OK | OK |
@@ -99,9 +104,20 @@ Ajustes que hizo falta en los propios tests:
 **Fallo real del mod encontrado y corregido:** `DeathHandler` leía el día al final del tick y no en el
 momento de la muerte. Ahora la duración del Death Train usa el día en que se murió.
 
-**Comprobación negativa de los tests nuevos:** con la cancelación del tick de la TNT y la devolución al cofre
-desactivadas, los dos tests fallan (`Expected Stone, got Air at … (relative: 3,1,3)` y `the diamonds must go
-back to the chest, found 1 minecraft:structure_void`); con el código final pasan.
+**Comprobación negativa de los tests nuevos:** con su corrección desactivada, cada uno de los 7 tests nuevos
+falla y con el código final pasa:
+* TNT del dragón: `Expected Stone, got Air at … (relative: 3,1,3)`;
+* intercambio con tecla numérica: `the diamonds must go back to the chest, found 1 minecraft:structure_void`;
+* zombified piglin: `zombified piglin attack lowered to 3.0`;
+* Ender Creepers del D50: `an Ender Creeper was renamed to Quantum Creeper`;
+* Crafter: `the Crafter must refuse the Super Golden Apple+ (it skipped the extra cost)`;
+* espectador: `a spectator killed by /kill or the void was recorded as a new Permadeath`;
+* reliquia en el cursor: `slot 4 was locked while the relic was on the cursor`.
+
+**Test corregido:** los tests de ahogamiento medían el aire absoluto a los 10 ticks con un cerdo sin nombre.
+Desde el D40 el pase periódico de mobs convierte los cerdos en ravagers y, al correr ahora cada 60 ticks de
+tiempo de juego en cada mundo, a veces caía dentro de la medida. El cerdo de prueba lleva nombre (como el
+cerdo del Pigman Rosa, que el pase respeta) y se mide la pérdida entre los ticks 10 y 20.
 
 ## 4. Servidor dedicado con los jars de producción
 
@@ -120,7 +136,7 @@ back to the chest, found 1 minecraft:structure_void`); con el código final pasa
   * la dimensión `permadeath:the_beginning` se carga y se guarda;
   * ningún error de mixin ni del mod.
 * **Reinicio:** `Calendar <PERFIL> started: PD day 40` (el día persiste), `Día Permadeath: 40/60`,
-  `Death Train activo: quedan 01:59:14` (la tormenta persiste con su marca absoluta) y el hito D40 **no** se
+  `Death Train activo: quedan 01:59:19` (la tormenta persiste con su marca absoluta) y el hito D40 **no** se
   vuelve a ejecutar.
 * **Cofres de The Beginning en el D60** (`setday 60` y `/permadeath debug beginningloot`, que tira el loot de
   cada contenedor alrededor de la ciudad Ytic más cercana sin abrirlo):
@@ -130,7 +146,7 @@ back to the chest, found 1 minecraft:structure_void`); con el código final pasa
   ciudad (`-1509, 179, 920`), que antes tenía 21 objetos sueltos fijos y ninguna tabla, da ahora 19 objetos de
   la tabla. Antes de corregir el loot modifier, el mismo comando daba 14/14 cofres vacíos en el D60 (y 14/14
   con loot en el D50). Igual en GAME60 y REAL30.
-* **REAL30:** `setday 40` reancla el inicio 20 días atrás (`start=2026-09-18 11:20:41 UTC`,
+* **REAL30:** `setday 40` reancla el inicio 20 días atrás (`start=2026-09-18 23:13:49 UTC`,
   `maxElapsed=20d 00h 00m 24s`).
 * Los únicos errores del log son de red (`api.minecraftservices.com` no está permitido: clave de Yggdrasil).
 
@@ -147,8 +163,8 @@ La política de red rechaza todavía dos hosts que no hacen falta para compilar:
 
 | | GAME60 | REAL30 |
 |---|---|---|
-| Fichero | `permadeath-GAME60-neoforge-1.21.1.jar` (778 925 bytes) | `permadeath-REAL30-neoforge-1.21.1.jar` (778 935 bytes) |
-| Entradas | 482 | 482 |
+| Fichero | `permadeath-GAME60-neoforge-1.21.1.jar` (786 007 bytes) | `permadeath-REAL30-neoforge-1.21.1.jar` (786 017 bytes) |
+| Entradas | 483 | 483 |
 | `permadeath_profile.properties` | `mode=GAME60` | `mode=REAL30` |
 | Manifiesto | `Implementation-Version: 2.0.0`, `Permadeath-Profile: GAME60`, `Built-Against-NeoForge: 21.1.256` | igual con `REAL30` |
 
@@ -165,8 +181,8 @@ La política de red rechaza todavía dos hosts que no hacen falta para compilar:
 
 | Jar | SHA-256 |
 |---|---|
-| `build/libs/permadeath-GAME60-neoforge-1.21.1.jar` | `8950db236154eb155b1b3e0fe0788520edb9706865432eb8025ff3c72886c2d0` |
-| `build/libs/permadeath-REAL30-neoforge-1.21.1.jar` | `c8626fbedb07722b364f65fea2a5950f45684c62f02915cd0376829fbd7a22b1` |
+| `build/libs/permadeath-GAME60-neoforge-1.21.1.jar` | `c9fed3ed858c10e66a7b180a356bdb6c4f109e64817337499bdb75958b3756e8` |
+| `build/libs/permadeath-REAL30-neoforge-1.21.1.jar` | `69bd24f3d28e23814ea856263dcf3ae3cb21a565c087833df57ad7e5a4a178c2` |
 
 ## Cómo repetir todo
 

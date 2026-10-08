@@ -58,7 +58,8 @@ hosts basta para `./gradlew clean build`, los GameTests y `tools/server-smoke-te
 
 * **Eventos de NeoForge antes que mixins.** De los 54 mixins/accessors de Fabric quedan 4 mixins, que no
   tienen ningún evento equivalente (destino de los End Gateway, pasajero que controla la montura, inicio de
-  estructuras a partir del D40 y colisiones del shulker montado). Hay además 7 entradas de access
+  estructuras a partir del D40 y colisiones del shulker montado), más `CrafterBlockMixin`, que impide que el
+  Crafter vanilla (sin evento de crafteo) fabrique las recetas con coste extra. Hay además 7 entradas de access
   transformer. Ver `FABRIC_TO_NEOFORGE_PORT.md`.
 * **Un único enrutador de eventos** (`event/PermadeathEvents`). El orden queda explícito y todo es solo de
   servidor: si el calendario no está en marcha, no se ejecuta nada.

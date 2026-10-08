@@ -185,4 +185,9 @@ public final class LifeOrb {
         GRACE.remove(player.getUUID());
         BOSS_BAR.removePlayer(player);
     }
+
+    /** The old object of a respawned player leaves the boss bar (its connection closes when a dead player is banned). */
+    public static void onRespawn(ServerPlayer original) {
+        BOSS_BAR.removePlayer(original);
+    }
 }

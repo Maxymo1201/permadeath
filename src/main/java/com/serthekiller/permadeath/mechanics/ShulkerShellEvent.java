@@ -41,8 +41,11 @@ public final class ShulkerShellEvent {
         return true;
     }
 
-    /** Logged out players leave the boss bar (it kept them and their closed connections). */
-    public static void onLogout(ServerPlayer player) {
+    /**
+     * Logged out players, and the old object of a respawned player, leave the boss bar: it kept them, and a closed
+     * connection queues every packet sent to it.
+     */
+    public static void removePlayer(ServerPlayer player) {
         BOSS_BAR.removePlayer(player);
     }
 
