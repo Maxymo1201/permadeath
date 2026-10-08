@@ -32,7 +32,7 @@ Para cada pieza del mod Fabric se indica qué hace ahora el port y por qué. Pre
 | `ServerEntityWorldChangeEvents.AFTER_PLAYER_CHANGE_WORLD` | `PlayerEvent.PlayerChangedDimensionEvent` |
 | `ServerPlayConnectionEvents.JOIN` / `DISCONNECT` | `PlayerEvent.PlayerLoggedInEvent` / `PlayerLoggedOutEvent` |
 | `ServerPlayerEvents.AFTER_RESPAWN` | `PlayerEvent.Clone` |
-| `LootTableEvents.REPLACE` (cofres vacíos en D60) | Global Loot Modifier `permadeath:d60_empty_loot` |
+| `LootTableEvents.REPLACE` (cofres vacíos en D60) | Global Loot Modifier `permadeath:d60_empty_loot` (solo tablas `minecraft:chests/*`) |
 | Hilos con `Thread.sleep` (muerte, baneo) | `util/ServerScheduler`: tareas en el hilo del servidor, con los mismos retardos en ticks |
 
 ## 3. Los 54 mixins/accessors de Fabric
@@ -60,7 +60,7 @@ Para cada pieza del mod Fabric se indica qué hace ahora el port y por qué. Pre
 | `ItemFrameMixin` | D40+: los élitros de los marcos del End aparecen casi rotos | `EntityJoinLevelEvent` (marco con élitros en el End) |
 | `LargeFireballMinix` | Potencia de las bolas de los ghasts especiales | AT `LargeFireball#explosionPower` + `EntityJoinLevelEvent` |
 | `LivingEntityMixin` | Ahogamiento acelerado, inmunidad a pociones, TNT y conchas al morir un shulker… | `LivingBreatheEvent`, `LivingIncomingDamageEvent`, `LivingDeathEvent`, `LivingDropsEvent` |
-| `LootTableMixin` | Contenedores vacíos en The Beginning (D60) | Global Loot Modifier `permadeath:d60_empty_loot` |
+| `LootTableMixin` | Contenedores vacíos en The Beginning (D60) | **No se porta**: dejaba sin loot todos los cofres de The Beginning abiertos desde el D60 (ver PERMADEATH_AUDIT.md §6) |
 | `MagmaCubeSpawnLimitMixin` | D25: límite de magma cubes en los deltas de basalto | `MobSpawnEvent.SpawnPlacementCheck` |
 | `MikecrackCreeperSpawnMixin`, `MikecrackSpawnPlacementsMixin` | Modo Mikecrack: los creepers ignoran las reglas de aparición | Sustituido por la regla del plugin (activa por defecto el D60): Ender Quantum Creepers junto a los jugadores desde el tick del servidor (`Mikecrack`) |
 | `MinecartTickMixin` | La vagoneta-spawner huérfana recupera la gravedad | `EntityTickEvent.Pre` |

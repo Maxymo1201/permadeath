@@ -162,8 +162,9 @@ Leyenda: ✔ igual que Fabric · ✚ corrección · ≈ diferencia menor documen
   evoker reforzado) (§5); guardianes → guardianes ancianos; armas de los monstruos con Aspecto Ígneo II o
   Fuego; ✚ 26/101 phantoms traen 4 Ender Ghasts; flechas TNT del esqueleto demoníaco; golems de nieve salvajes;
   Shulker Críptico en el Nether.
-* ✚ Cofres vacíos desde el D60 mediante un loot modifier global: tablas `chests/*` integradas y cualquier
-  contenedor de The Beginning.
+* ✔ Cofres de estructuras vanilla vacíos desde el D60 mediante un loot modifier global (tablas
+  `minecraft:chests/*`). ✚ Los cofres de The Beginning conservan su loot: Fabric también los vaciaba, así que
+  todos los que se abrían a partir del D60 salían vacíos para siempre (el plugin no tiene esta regla) (§6).
 * ✔ Life Orb (8 h, después −16 de vida máxima para quien no lo tenga), Wither cada 60 min reales,
   ahogamiento ×10 (✚ golpes de 10), 7 % de fallo de tótems con 3 tótems, Wither que ignora escudos, minar sin
   netherita quita 16. ✚ Perlas: 6 s de espera al caer. ✚ Cambio de Mikecrack activo por defecto (§5).
@@ -196,6 +197,14 @@ Leyenda: ✔ igual que Fabric · ✚ corrección · ≈ diferencia menor documen
   regeneraciones pendientes.
 * **Herramientas de netherita con nombre personalizado**: el nombre dorado va en `ITEM_NAME`, así que un
   objeto renombrado muestra su nombre propio. En Fabric también se teñía de dorado.
+* **Cofres bajo un spawner en la ciudad Ytic**: dos cofres (`abajo.nbt` e `izquierda.nbt`) tienen encima un
+  spawner de vex, que impide abrirlos hasta romperlo. El esquemático `ytic.schem` del plugin tiene esos mismos dos
+  cofres bajo un spawner, así que se conserva. Tienen su tabla de loot.
+* **Estructura `permadeath:beginning_portal`**: heredada de Fabric, apunta a la plantilla `beginningportal`
+  (el fichero se llama `begginningportal`) y no genera nada. El plugin solo pone el portal de vuelta en el
+  centro, y el port también. Arreglar el nombre llenaría la dimensión de portales que el plugin no tiene, y
+  borrarla haría que los mundos ya generados registren errores de estructura desconocida al cargar chunks.
+  Se deja como está.
 
 ## 5. Cambios tras comparar con el plugin Permadeath 1.3
 
@@ -278,4 +287,25 @@ servidor dedicado (`tools/server-smoke-test.sh`), incluida la persistencia del D
   Se mantienen los 60 min reales obligatorios.
 * **GIGA Slime/MagmaCube y lluvia de mobs del Nether**: los números del plugin dependen de la vida del mob
   antes de cambiar su tamaño y de su bucle de 1,5 s; se conservan los de Fabric.
+
+## 6. Segunda auditoría: fallos corregidos
+
+Revisión del código del port buscando fallos de juego, con cada caso comprobado en el código de Minecraft
+1.21.1 / NeoForge 21.1.256 o en un servidor real. Los cofres de The Beginning se comprobaron en el servidor
+dedicado con `/permadeath debug beginningloot`, que tira el loot de todos los contenedores de alrededor de la
+ciudad Ytic más cercana sin abrirlos.
+
+| Fallo | Causa | Corrección | Prueba |
+|---|---|---|---|
+| Cofres de The Beginning sin loot | En el D60 el loot modifier global vaciaba todo contenedor de The Beginning. En el servidor: D50 → 14/14 cofres con loot; D60 → 14/14 vacíos. La tabla se consume al abrir, así que un cofre abierto en el D60 queda vacío para siempre | El modifier deja The Beginning en paz y solo vacía las tablas `minecraft:chests/*` | Servidor dedicado (D60: 15 con tabla, 0 vacíos) |
+| Cofre central de la ciudad Ytic sin tabla | `centro.nbt` (Fabric) traía 21 objetos sueltos fijos (cohetes, lingotes y manzanas de uno en uno) en vez de loot. En el plugin los 13 cofres de Ytic reciben loot aleatorio | El cofre usa `permadeath:chests/the_beginning_chest` | Servidor dedicado (solo quedan sin tabla el cofre trampa de herramientas y la caja de shulker de oro, como en el plugin) |
+| La TNT del dragón explotaba dos veces | La regla quitaba la TNT y creaba la explosión de potencia 15 sin romper bloques, pero el tick vanilla seguía y añadía la explosión de potencia 4 de la TNT, que rompía la isla y dañaba al dragón | Se cancela el tick de una entidad que una regla ya ha quitado | GameTest `dragonTntExplodesOnceWithoutBreakingBlocks` (falla sin la corrección) |
+| El dragón seguía atacando mientras moría | En la fase DYING los ataques de vuelo (visión nocturna, círculo de TNT, rayos) seguían. Muerto posado (vida 0, sin fase DYING), seguía girando, soltando nubes y rayos durante los 200 ticks de la animación | Ningún ataque, giro ni rayo durante la muerte | — |
+| Cristales del End regenerados sin motivo | Un cristal de un chunk sin entidades cargadas contaba como destruido (ghast y sonido de wither, y un cristal duplicado). Un dragón descargado (nadie cerca de la arena) contaba como muerto y borraba las regeneraciones pendientes, así que al volver salía otro Ender Ghast por cada cristal que faltaba | Solo cuentan los chunks cargados; las regeneraciones solo se borran si el dragón ha muerto de verdad (`EndDragonFight`) | — |
+| Nube de corazones oscuros al aparecer otro dragón | El estado de visión nocturna de un combate anterior no se olvidaba | Se borra mientras no hay dragón vivo | — |
+| Círculo de TNT y bolas de fuego del dragón borraban cofres | Los bloques con entidad (cofres, cajas de shulker) se lanzaban como bloques que caen sin su contenido; la bola de lava/bedrock podía sustituir la bedrock del portal de salida | Los bloques con entidad y los irrompibles no se tocan | — |
+| Objetos tirados al suelo desde un cofre (D40+) | Un intercambio con tecla numérica desde un cofre hacia un hueco bloqueado tiraba el objeto al suelo (perdido sobre el vacío en The Beginning) | El objeto vuelve al hueco del cofre (o al inventario) | GameTest `numberKeySwapIntoLockedSlotReturnsTheItemToTheChest` (falla sin la corrección) |
+| Gatos supernova bloqueados | Un gato cuyo chunk se descargaba ocupaba para siempre uno de los 2 huecos, y los gatos nuevos desaparecían | Se olvida el gato descargado o muerto; los temporizadores van por dimensión | — |
+| Cubos en The Beginning y en el D50 | Vaciar un cubo se cancelaba solo en el servidor y el cliente mostraba un fluido que no existía | Se cancela en los dos lados; la regla del D50 reenvía el inventario | — |
+| Gato galáctico | Error si la invocación no devolvía ningún mob | Comprobación de nulo | — |
 

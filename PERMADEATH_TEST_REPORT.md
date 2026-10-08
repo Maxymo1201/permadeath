@@ -1,6 +1,6 @@
 # Informe de pruebas
 
-Fecha de ejecución: 2026-10-08 (repetido entero tras aplicar los cambios del plugin Permadeath 1.3). Entorno: contenedor Linux (x86_64), OpenJDK 21.0.12, Gradle 8.14.3 (wrapper),
+Fecha de ejecución: 2026-10-08 (repetido entero tras la segunda auditoría de fallos, PERMADEATH_AUDIT.md §6). Entorno: contenedor Linux (x86_64), OpenJDK 21.0.12, Gradle 8.14.3 (wrapper),
 ModDevGradle 2.0.148, **NeoForge 21.1.256** (la última del canal 21.1 en `maven.neoforged.net` ese día),
 Minecraft 1.21.1.
 
@@ -10,11 +10,12 @@ Minecraft 1.21.1.
 |---|---|
 | `./gradlew clean build`: compilación, AT validados, tests del núcleo, los 2 jars y `verifyProductionJars` | **OK** |
 | Tests unitarios del núcleo (`./gradlew clean build`) | **95/95 OK** |
-| GameTests GAME60 (`./gradlew runGameTestServer -PpermadeathMode=GAME60`) | **27/27 OK** |
-| GameTests REAL30 (`./gradlew runGameTestServer -PpermadeathMode=REAL30`) | **27/27 OK** |
-| GameTests con mundos limpios (GAME60 y REAL30, mundo `run/world` borrado antes de cada uno) | **27/27 + 27/27 OK** |
+| GameTests GAME60 (`./gradlew runGameTestServer -PpermadeathMode=GAME60`) | **29/29 OK** |
+| GameTests REAL30 (`./gradlew runGameTestServer -PpermadeathMode=REAL30`) | **29/29 OK** |
+| GameTests con mundos limpios (GAME60 y REAL30, mundo `run/world` borrado antes de cada uno) | **29/29 + 29/29 OK** |
+| Los 2 GameTests nuevos fallan con las correcciones desactivadas (comprobación negativa, GAME60) | **2/2 fallan como se espera** |
 | Cambio de modo GAME60 → REAL30 sobre el mismo mundo (GameTests REAL30 sobre el mundo de GAME60) | **OK**: conserva el D60 y reancla el calendario |
-| Servidor dedicado con el jar de producción, arranque + reinicio (`tools/server-smoke-test.sh`) | **GAME60 OK, REAL30 OK** |
+| Servidor dedicado con el jar de producción, arranque + reinicio + cofres de The Beginning en el D60 (`tools/server-smoke-test.sh`) | **GAME60 OK, REAL30 OK** |
 | Inspección de los jars de producción | **OK** |
 
 ## 1. Build
@@ -45,7 +46,7 @@ Minecraft 1.21.1.
 
 ## 3. GameTests (ejecutados en un servidor NeoForge 21.1.256 real)
 
-`gametest/PermadeathGameTests`: 27 tests con la plantilla `permadeath:gametest_empty`. Cada lote fija el día
+`gametest/PermadeathGameTests`: 29 tests con la plantilla `permadeath:gametest_empty`. Cada lote fija el día
 en `@BeforeBatch` con `ProgressionClock#setDay`, lo mismo que hace `/permadeath setday`. Los jugadores simulados se
 conectan con una conexión en memoria configurada para la red de NeoForge.
 
@@ -62,6 +63,8 @@ conectan con una conexión en memoria configurada para la red de NeoForge.
 | d40 | `chestLootPresentBeforeD60` | El loot de mazmorra no está vacío | OK | OK |
 | d40 | `oneTotemIsNotEnoughOnD40` | Con un tótem el jugador muere y el tótem se consume | OK | OK |
 | d40 | `maxHealthPenaltyAndLockedSlotsOnD40` | 12 de vida máxima, hueco 4 bloqueado, PvP activo | OK | OK |
+| d40 | `numberKeySwapIntoLockedSlotReturnsTheItemToTheChest` | Tecla numérica desde un cofre hacia el hueco bloqueado 4: el hueco vuelve a bloquearse, los 7 diamantes vuelven al cofre y no cae nada al suelo | OK | OK |
+| d40tnt | `dragonTntExplodesOnceWithoutBreakingBlocks` | La TNT del dragón explota sin romper los 5 bloques de piedra que la rodean (sin la explosión vanilla de potencia 4) | OK | OK |
 | d60 | `calendarNeverGoesBeyondD60` | `setDay(70)` → 60 | OK | OK |
 | d60 | `drowningTenTimesFasterOnD60` | ≤ 230 de aire a los 10 ticks (vanilla ≈ 290) | OK | OK |
 | d60 | `chestLootEmptyOnD60` | El loot de mazmorra está vacío | OK | OK |
@@ -96,9 +99,13 @@ Ajustes que hizo falta en los propios tests:
 **Fallo real del mod encontrado y corregido:** `DeathHandler` leía el día al final del tick y no en el
 momento de la muerte. Ahora la duración del Death Train usa el día en que se murió.
 
+**Comprobación negativa de los tests nuevos:** con la cancelación del tick de la TNT y la devolución al cofre
+desactivadas, los dos tests fallan (`Expected Stone, got Air at … (relative: 3,1,3)` y `the diamonds must go
+back to the chest, found 1 minecraft:structure_void`); con el código final pasan.
+
 ## 4. Servidor dedicado con los jars de producción
 
-`tools/server-smoke-test.sh GAME60 REAL30` → `SMOKE OK [GAME60]` y `SMOKE OK [REAL30]`.
+`tools/server-smoke-test.sh GAME60 REAL30` → `SMOKE OK [GAME60]` y `SMOKE OK [REAL30]` (semilla 20241).
 
 * **Servidor usado:** un servidor dedicado NeoForge 21.1.256 (`--launchTarget forgeserverdev`, el mismo
   NeoForge que instala el instalador). Lo prepara la run `smokeServer` de ModDevGradle y no contiene ninguna
@@ -113,10 +120,19 @@ momento de la muerte. Ahora la duración del Death Train usa el día en que se m
   * la dimensión `permadeath:the_beginning` se carga y se guarda;
   * ningún error de mixin ni del mod.
 * **Reinicio:** `Calendar <PERFIL> started: PD day 40` (el día persiste), `Día Permadeath: 40/60`,
-  `Death Train activo: quedan 01:59:18` (la tormenta persiste con su marca absoluta) y el hito D40 **no** se
+  `Death Train activo: quedan 01:59:14` (la tormenta persiste con su marca absoluta) y el hito D40 **no** se
   vuelve a ejecutar.
-* **REAL30:** `setday 40` reancla el inicio 20 días atrás (`start=2026-09-18 01:42:40 UTC`,
+* **Cofres de The Beginning en el D60** (`setday 60` y `/permadeath debug beginningloot`, que tira el loot de
+  cada contenedor alrededor de la ciudad Ytic más cercana sin abrirlo):
+  `Cofres de The Beginning junto a la ciudad Ytic de -1536, 0, 912: 17 (con tabla de loot: 15, vacíos: 0)`.
+  Los 15 cofres con tabla dan entre 10 y 148 objetos; los dos sin tabla son el cofre trampa de herramientas
+  (4 objetos) y la caja de shulker de oro (64), contenidos fijos como en el plugin. El cofre central de la
+  ciudad (`-1509, 179, 920`), que antes tenía 21 objetos sueltos fijos y ninguna tabla, da ahora 19 objetos de
+  la tabla. Antes de corregir el loot modifier, el mismo comando daba 14/14 cofres vacíos en el D60 (y 14/14
+  con loot en el D50). Igual en GAME60 y REAL30.
+* **REAL30:** `setday 40` reancla el inicio 20 días atrás (`start=2026-09-18 11:20:41 UTC`,
   `maxElapsed=20d 00h 00m 24s`).
+* Los únicos errores del log son de red (`api.minecraftservices.com` no está permitido: clave de Yggdrasil).
 
 ### Hosts que siguen bloqueados en este entorno
 
@@ -131,7 +147,7 @@ La política de red rechaza todavía dos hosts que no hacen falta para compilar:
 
 | | GAME60 | REAL30 |
 |---|---|---|
-| Fichero | `permadeath-GAME60-neoforge-1.21.1.jar` (773 706 bytes) | `permadeath-REAL30-neoforge-1.21.1.jar` (773 716 bytes) |
+| Fichero | `permadeath-GAME60-neoforge-1.21.1.jar` (778 925 bytes) | `permadeath-REAL30-neoforge-1.21.1.jar` (778 935 bytes) |
 | Entradas | 482 | 482 |
 | `permadeath_profile.properties` | `mode=GAME60` | `mode=REAL30` |
 | Manifiesto | `Implementation-Version: 2.0.0`, `Permadeath-Profile: GAME60`, `Built-Against-NeoForge: 21.1.256` | igual con `REAL30` |
@@ -149,8 +165,8 @@ La política de red rechaza todavía dos hosts que no hacen falta para compilar:
 
 | Jar | SHA-256 |
 |---|---|
-| `build/libs/permadeath-GAME60-neoforge-1.21.1.jar` | `6da2ae2f91054530e7ee115099e429414817e51d39452ef8757583431feac772` |
-| `build/libs/permadeath-REAL30-neoforge-1.21.1.jar` | `873f88111338ec8281093f7bc9ea3b3faed0848f99ccf901ad58f4ad4fca51d5` |
+| `build/libs/permadeath-GAME60-neoforge-1.21.1.jar` | `8950db236154eb155b1b3e0fe0788520edb9706865432eb8025ff3c72886c2d0` |
+| `build/libs/permadeath-REAL30-neoforge-1.21.1.jar` | `c8626fbedb07722b364f65fea2a5950f45684c62f02915cd0376829fbd7a22b1` |
 
 ## Cómo repetir todo
 

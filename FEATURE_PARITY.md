@@ -106,5 +106,5 @@ Estado del port: ✔ portado · ✚ portado con corrección · ≈ diferencia do
 | Antorchas sin receta (D40) y lingotes de horno → pepitas (D50) | Mixin | `RecipeFilter` | ✔ | Sí (GameTest, D40) |
 | Receta de pepitas de pizarra profunda con hierro | Copia errónea | Corregida | ✚ | No |
 | Coste extra de las recetas especiales | Podía duplicar objetos | Corregido | ✚ | No |
-| Cofres vacíos en el D60 | `LootTableEvents` + mixin | Global Loot Modifier | ✔ | Sí (GameTest) |
+| Cofres vacíos en el D60 | `LootTableEvents` + mixin (también vaciaba los de The Beginning) | Global Loot Modifier solo para `minecraft:chests/*`; The Beginning conserva su loot | ✚ | Sí (GameTest; servidor: cofres de The Beginning con loot en el D60) |
 | Contenido D61-69 / D70 / logro de 70 días | Sí | Fuera de alcance (D60 final); datos conservados | ✖ | — |
