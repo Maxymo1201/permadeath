@@ -42,7 +42,7 @@ Para cada pieza del mod Fabric se indica qué hace ahora el port y por qué. Pre
 | `AreaEffectCloudMixin` | Nubes personalizadas (blanca 10 de daño, humo que limpia efectos, corazones oscuros, nube eléctrica) | `EntityTickEvent.Post` → `GameplayRules.customCloud` |
 | `creepermixin` | Cancela la nube de efectos de los creepers | `EntityJoinLevelEvent` cancelado si la nube nace en el punto y tick de la explosión de un creeper (`ExplosionEvent.Start`) |
 | `BeeEntityMixin` | D20+: las abejas conservan el aguijón | AT `Bee#setHasStung` + `EntityTickEvent.Post` |
-| `BucketItemMixin` | D50+: el cubo vacío no recoge agua ni lava | `PlayerInteractEvent.RightClickItem` → `FAIL` |
+| `BucketItemMixin` | D50+: el cubo vacío no recoge agua ni lava | `PlayerInteractEvent.RightClickItem` → `FAIL` (además, en The Beginning no se vacía ningún cubo, como en el plugin) |
 | `ChunkGeneratorStructureBlockMixin` | D40+: no se generan aldeas, templos, monumentos ni naufragios | **Mixin** `ChunkGeneratorMixin` (no existe evento de inicio de estructura y los structure sets no se recargan) |
 | `CommandMonitorMixin` | Anota trampas para el logro de supervivencia | `CommandEvent` |
 | `DragonFireballMixin` | Tabla de nubes, lava, bedrock y rayos de las bolas del dragón | `ProjectileImpactEvent` → `end/DragonFireballs` |
@@ -51,7 +51,7 @@ Para cada pieza del mod Fabric se indica qué hace ahora el port y por qué. Pre
 | `EndDragonFightMixin` | Ladrillos de piedra del End, altares y pociones | `LevelTickEvent.Post` del End → `end/EndArena` (incremental y persistente) |
 | `EnderDragonMixin` | "PERMADEATH DEMON": vida, fases, giro, ataques | `EntityJoinLevelEvent` + `EntityTickEvent.Pre/Post` → `end/EnderDragonDemon` |
 | `EndermanMixin` | Inmune dentro de la nube verde (regeneración + tótem) | `LivingIncomingDamageEvent` |
-| `EnderPearlCooldownMixin` | D60: cooldown de perlas 40 ticks | `EntityJoinLevelEvent` (perla lanzada) |
+| `EnderPearlCooldownMixin` | D60: cooldown de perlas 40 ticks | `EntityTeleportEvent.EnderPearl`: 120 ticks al caer la perla, como en el plugin |
 | `EndGatewayMixin` | Gateways del Overworld y de The Beginning | **Mixin** `EndGatewayBlockMixin` (no existe evento que cambie el destino de un portal) |
 | `EntityAccessor`, `LivingEntityAccessor`, `MobAccessor`, `GoalSelectorAccessor`, `MobPathfindingAccessor`, `PathNavigationAccessor`, `MinecraftServerAccessor`, `RecipeMapAccessor`, `ShulkerAccessor`, `SleepCounter$PlayerAccessor` | Acceso a miembros privados | Innecesarios: API pública, AT de NeoForge o AT propio |
 | `ExplosionMixin` | Las explosiones no rompen bloques en The Beginning | `ExplosionEvent.Detonate` (vacía `getAffectedBlocks`) |
@@ -62,22 +62,22 @@ Para cada pieza del mod Fabric se indica qué hace ahora el port y por qué. Pre
 | `LivingEntityMixin` | Ahogamiento acelerado, inmunidad a pociones, TNT y conchas al morir un shulker… | `LivingBreatheEvent`, `LivingIncomingDamageEvent`, `LivingDeathEvent`, `LivingDropsEvent` |
 | `LootTableMixin` | Contenedores vacíos en The Beginning (D60) | Global Loot Modifier `permadeath:d60_empty_loot` |
 | `MagmaCubeSpawnLimitMixin` | D25: límite de magma cubes en los deltas de basalto | `MobSpawnEvent.SpawnPlacementCheck` |
-| `MikecrackCreeperSpawnMixin`, `MikecrackSpawnPlacementsMixin` | Modo Mikecrack: los creepers ignoran las reglas de aparición | `MobSpawnEvent.SpawnPlacementCheck` → `SUCCEED` |
+| `MikecrackCreeperSpawnMixin`, `MikecrackSpawnPlacementsMixin` | Modo Mikecrack: los creepers ignoran las reglas de aparición | Sustituido por la regla del plugin (activa por defecto el D60): Ender Quantum Creepers junto a los jugadores desde el tick del servidor (`Mikecrack`) |
 | `MinecartTickMixin` | La vagoneta-spawner huérfana recupera la gravedad | `EntityTickEvent.Pre` |
 | `MixinCaveSpider` | D50: veneno III + náusea al morder | `LivingDamageEvent.Post`. El punto de anclaje para un shulker no se porta: solo actúa si la araña va montada **sobre** un shulker, cosa que no ocurre nunca |
-| `MixinLivingEntityFatigue` | Fatiga de minería ×2 | `MobEffectEvent.Applicable` (se sustituye por la instancia ajustada) |
+| `MixinLivingEntityFatigue` | Fatiga de minería ×2; leche y tótems no quitaban fatiga, hambre ni veneno | `MobEffectEvent.Applicable` (se sustituye por la instancia ajustada) + `MobEffectEvent.Remove` (solo la leche respeta la fatiga, como en el plugin) |
 | `MixinLlamaSpit` | D50: el escupitajo envenena y empuja | `ProjectileImpactEvent` |
 | `MixinMob` | La araña con shulker y el "ghast pig" no los controla el jinete | **Mixin** `MobMixin` (`getControllingPassenger`) |
-| `MixinPlayerFoodEffects` | Comidas peligrosas a partir del D50 | `LivingEntityUseItemEvent.Finish` |
+| `MixinPlayerFoodEffects` | Comidas peligrosas a partir del D50 | `LivingEntityUseItemEvent.Finish` (tabla del plugin) |
 | `MobCapMixin` | Límite de monstruos ×2 desde el D10 | AT `MobCategory#max` (public-f) + `MobCapController` |
 | `NetheriteUpgradeMixin` | Herramientas de netherita irrompibles y con nombre dorado | `ModifyDefaultComponentsEvent` (`UNBREAKABLE` oculto + `ITEM_NAME` dorado) |
-| `PlayerMixin` | D30-39: al acabarse la visión nocturna en el End, nube de corazones oscuros | Tick del jugador (`GameplayRules.onPlayerTick`) |
+| `PlayerMixin` | D30-39: al acabarse la visión nocturna en el End, nube de corazones oscuros | Tick del jugador (`GameplayRules.onPlayerTick`), D30-60 como en el plugin |
 | `PrimedTntMixin` | TNT del dragón: lanza bloques por los aires | `EntityTickEvent.Pre` |
 | `QuantumCreeperMixin` | Radio 20 y mecha de 15 ticks (D60) | AT `Creeper#explosionRadius`/`maxSwell` + `EntityTickEvent.Pre` |
 | `RaidHeroEffectMixin` | D50: Héroe de la Aldea máximo 5 min | `MobEffectEvent.Applicable` |
 | `RecipeManagerMixin` | Quita antorchas (D40) y lingotes de horno (D50) | `OnDatapackSyncEvent` + `RecipeManager#replaceRecipes` (`recipes/RecipeFilter`) |
 | `ResultSlotMixin` | Coste extra de las recetas especiales | `PlayerEvent.ItemCraftedEvent` (`recipes/CraftingCost`) |
-| `ShulkerBulletMixin` | Las balas de shulker generan TNT | `ProjectileImpactEvent` |
+| `ShulkerBulletMixin` | Las balas de shulker generan TNT | `ProjectileImpactEvent` (en el End, mechas del plugin) |
 | `ShulkerMixin` | El shulker montado no colisiona ni empuja; el "ShulkerRojo" no se teletransporta | **Mixin** `ShulkerMixin` (colisión/empuje) + `EntityTeleportEvent.EnderEntity` (teletransporte) |
 | `SnowGolemSnowballMixin` | Bolas de nieve de 50 de daño en los días 61-69 | **No se porta**: el D60 es el último día (contenido D61-69 fuera de alcance) |
 | `VehicleEntityMixin` | La vagoneta-spawner es invulnerable | `EntityInvulnerabilityCheckEvent` |

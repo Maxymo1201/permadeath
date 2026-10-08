@@ -10,8 +10,8 @@ no hace falta Parchment.
 | Ruta | Contenido |
 |---|---|
 | `src/core/java` | Núcleo **sin dependencias de Minecraft**: calendario (`ProgressionClock`, `GameDayProgressionClock`, `RealTimeProgressionClock`), `MilestoneTracker`, estado persistido (`ProgressionState`), reglas numéricas por día (`rules/DayRules`, `rules/TotemRules`) y el parser de los ficheros del mod Fabric (`legacy/LegacyFabricState`). |
-| `src/coreTest/java` | Tests JUnit 5 del núcleo (82 casos). |
-| `src/main/java/.../gametest` | 15 GameTests (se ejecutan en los dos perfiles). |
+| `src/coreTest/java` | Tests JUnit 5 del núcleo (95 casos). |
+| `src/main/java/.../gametest` | 27 GameTests (se ejecutan en los dos perfiles). |
 | `src/main/java` | El mod NeoForge (registros, eventos, fases, mobs, End, The Beginning, comandos, worldgen, mixins, GameTests). |
 | `src/main/resources` | Assets y datos del jar original convertidos (`fabric:load_conditions` → `neoforge:conditions`), `accesstransformer.cfg`, `permadeath.mixins.json`, loot modifier global. |
 | `src/main/templates/META-INF/neoforge.mods.toml` | Descriptor del mod (se expande con `gradle.properties`). |
@@ -29,7 +29,7 @@ eso la tarea `jar` estándar está desactivada.
 ./gradlew clean build          # tests del núcleo + permadeath-GAME60-neoforge-1.21.1.jar + permadeath-REAL30-neoforge-1.21.1.jar + verifyProductionJars
 ./gradlew buildGame60          # solo GAME60 (+ verificación)
 ./gradlew buildReal30          # solo REAL30 (+ verificación)
-./gradlew coreTest             # 82 tests unitarios del calendario y las reglas (no necesita Minecraft)
+./gradlew coreTest             # 95 tests unitarios del calendario y las reglas (no necesita Minecraft)
 ./gradlew runGameTestServer -PpermadeathMode=GAME60   # GameTests en el entorno de desarrollo (también REAL30)
 ./gradlew runServer -PpermadeathMode=REAL30           # servidor de desarrollo con el perfil indicado
 tools/server-smoke-test.sh GAME60 REAL30              # servidor dedicado con los jars de build/libs, arranque + reinicio
@@ -95,5 +95,6 @@ Las carpetas `assets/permadeath/items`, `assets/permadeath/equipment` y `data/pe
 ## Créditos y licencia
 
 Mod original para Fabric: **Serthekiller**. Diseño de juego: serie Permadeath de **ElRichMC** y plugin
-**PermaDeathCore** (fuente histórica que se usa como referencia cuando el jar es ambiguo). Licencia
-**CC0-1.0** (`LICENSE`), la misma del mod original.
+**PermaDeathCore** / **Permadeath 1.3** de **SebazCRC** (fuente histórica que se usa como referencia cuando el
+jar es ambiguo; los cambios que salieron de la comparación con la 1.3 están en `PERMADEATH_AUDIT.md` §5).
+Licencia **CC0-1.0** (`LICENSE`), la misma del mod original.
