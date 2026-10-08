@@ -83,7 +83,7 @@ public final class ExplodingAnimals {
     public static final String SUPERNOVA_CAT_TAG = "SupernovaCat";
     public static final String GALACTIC_DRAGON_TAG = "galactic_dragon";
     public static final String GALACTIC_GOLEM_TAG = "permadeath:galactic_golem";
-    private static final String BEAR_PRIMED_TAG = "permadeath:bear_primed";
+    static final String BEAR_PRIMED_TAG = "permadeath:bear_primed";
     private static final int MAX_PENDING_SUPERNOVAS = 2;
 
     private static final Map<UUID, Integer> SUPERNOVA_TIMERS = new HashMap<>();

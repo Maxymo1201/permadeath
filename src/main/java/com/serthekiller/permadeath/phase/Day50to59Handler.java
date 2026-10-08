@@ -127,6 +127,11 @@ public final class Day50to59Handler extends LatePhaseHandler {
     @Override
     protected void handleCreeper(Creeper creeper, ServerLevel level) {
         if (MobTracking.tryClaim(creeper, "creeper_variant_d50")) {
+            if (EnderMobs.isEnderCreeper(creeper)) {
+                // Ender Creepers that replace Nether and End endermen keep their name (no Quantum re-roll).
+                creeper.addEffect(new MobEffectInstance(MobEffects.INVISIBILITY, MobUtil.INFINITE, 0, false, false));
+                return;
+            }
             if (level.random.nextInt(100) < 20) {
                 creeper.setCustomName(Component.literal(EnderMobs.ENDER_CREEPER_NAME));
                 creeper.addEffect(new MobEffectInstance(MobEffects.INVISIBILITY, MobUtil.INFINITE, 0, false, false));
@@ -215,7 +220,8 @@ public final class Day50to59Handler extends LatePhaseHandler {
             drowned.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.TRIDENT));
         } else if (entity instanceof Vex vex) {
             vex.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, MobUtil.INFINITE, 2, false, true));
-        } else if (entity instanceof Slime) {
+        } else if (entity instanceof Slime && !entity.getTags().contains(PigmanClasses.MAGMA_MOUNT_TAG)) {
+            // The "Mini" mount of the Magma Pigman keeps its 1 HP.
             MobUtil.setMaxHealth(entity, 200.0);
         } else if (entity instanceof Shulker shulker) {
             shulker.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, MobUtil.INFINITE, 5, false, true));

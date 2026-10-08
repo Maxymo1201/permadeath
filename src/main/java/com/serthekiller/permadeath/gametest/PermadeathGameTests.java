@@ -52,6 +52,7 @@ import net.minecraft.world.entity.item.PrimedTnt;
 import net.minecraft.world.entity.monster.AbstractSkeleton;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Witch;
+import net.minecraft.world.entity.monster.ZombifiedPiglin;
 import net.minecraft.world.entity.projectile.ThrownEnderpearl;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.inventory.ClickType;
@@ -78,6 +79,7 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 import net.neoforged.neoforge.network.registration.NetworkRegistry;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
@@ -247,26 +249,33 @@ public final class PermadeathGameTests {
         helper.setBlock(new BlockPos(2, 5, 2), Blocks.GLASS);
         Pig pig = helper.spawn(EntityType.PIG, new Vec3(2.5, 1.0, 2.5));
         pig.setNoAi(true);
+        // From D40 the periodic mob pass turns unnamed pigs into ravagers; a named pig with its effects already
+        // applied (like the pigman's pig) stays a plain pig.
+        pig.setCustomName(Component.literal("Cerdo de prueba"));
+        pig.addTag("EffectsApplied");
         return pig;
+    }
+
+    /** Air lost by the submerged pig between ticks 10 and 20 (the first ticks depend on how the pig settles). */
+    private static void assertAirLossOverTenTicks(GameTestHelper helper, Pig pig, int min, int max, String expected) {
+        int[] before = new int[1];
+        helper.runAtTickTime(10, () -> before[0] = pig.getAirSupply());
+        helper.runAtTickTime(20, () -> {
+            int lost = before[0] - pig.getAirSupply();
+            helper.assertTrue(lost >= min && lost <= max, expected + ", lost " + lost + " air in 10 ticks");
+            helper.succeed();
+        });
     }
 
     @GameTest(template = EMPTY, batch = "d60", timeoutTicks = 100)
     public static void drowningTenTimesFasterOnD60(GameTestHelper helper) {
-        Pig pig = submergedPig(helper);
-        helper.runAtTickTime(10, () -> {
-            // vanilla: about 300 - 10 = 290 air left; x10: about 300 - 100.
-            helper.assertTrue(pig.getAirSupply() <= 230, "D60 air should drop ~10/tick, air = " + pig.getAirSupply());
-            helper.succeed();
-        });
+        // vanilla: 1 air per tick; x10: 10 per tick.
+        assertAirLossOverTenTicks(helper, submergedPig(helper), 80, 100, "D60 air should drop ~10/tick");
     }
 
     @GameTest(template = EMPTY, batch = "d0", timeoutTicks = 100)
     public static void drowningVanillaBeforeD50(GameTestHelper helper) {
-        Pig pig = submergedPig(helper);
-        helper.runAtTickTime(10, () -> {
-            helper.assertTrue(pig.getAirSupply() >= 280, "D0 air should drop ~1/tick, air = " + pig.getAirSupply());
-            helper.succeed();
-        });
+        assertAirLossOverTenTicks(helper, submergedPig(helper), 1, 10, "D0 air should drop ~1/tick");
     }
 
     // ------------------------------------------------------------------------------------------------ recipes / loot
@@ -517,6 +526,38 @@ public final class PermadeathGameTests {
         helper.assertTrue(creeper.getHealth() < health, "an Ender Creeper must take melee damage");
         creeper.discard();
         finish(helper, player);
+    }
+
+    @GameTest(template = EMPTY, batch = "d50", timeoutTicks = 40)
+    public static void enderCreeperReplacementKeepsItsNameOnD50(GameTestHelper helper) {
+        // Like the Ender Creepers that replace Nether endermen: named before their deferred phase join runs. Eight of
+        // them, because the old re-roll kept the name 20 % of the time.
+        List<Creeper> creepers = new ArrayList<>();
+        for (int i = 0; i < 8; i++) {
+            Creeper creeper = helper.spawn(EntityType.CREEPER, new BlockPos(1 + i % 4, 1, 4 + i / 4 * 2));
+            creeper.setCustomName(Component.literal(EnderMobs.ENDER_CREEPER_NAME));
+            creepers.add(creeper);
+        }
+        helper.runAtTickTime(5, () -> {
+            for (Creeper creeper : creepers) {
+                helper.assertTrue(EnderMobs.isEnderCreeper(creeper), "an Ender Creeper was renamed to " + creeper.getName().getString());
+                helper.assertTrue(creeper.hasEffect(MobEffects.INVISIBILITY), "a D50 Ender Creeper is invisible");
+                creeper.discard();
+            }
+            helper.succeed();
+        });
+    }
+
+    @GameTest(template = EMPTY, batch = "d40", timeoutTicks = 40)
+    public static void zombifiedPiglinKeepsItsAttackWhenTurnedHostile(GameTestHelper helper) {
+        ZombifiedPiglin pigman = helper.spawn(EntityType.ZOMBIFIED_PIGLIN, new BlockPos(5, 1, 5));
+        helper.runAtTickTime(5, () -> {
+            double attack = pigman.getAttributeBaseValue(Attributes.ATTACK_DAMAGE);
+            // Vanilla 5, or the pigman class value (20, 12 or 8 on D40); the hostile conversion used to set 2.
+            helper.assertTrue(attack >= 5.0, "zombified piglin attack lowered to " + attack);
+            pigman.discard();
+            helper.succeed();
+        });
     }
 
     @GameTest(template = EMPTY, batch = "d50storm", timeoutTicks = 40)

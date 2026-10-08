@@ -200,7 +200,7 @@ public final class HostileMobConverter {
             damage = 6.0;
         } else if (type == EntityType.BEE) {
             damage = Permadeath.day() >= 50 ? 30.0 : 2.0;
-        } else if (type == EntityType.FROG || type == EntityType.ZOMBIFIED_PIGLIN || type == EntityType.SQUID || type == EntityType.GLOW_SQUID) {
+        } else if (type == EntityType.FROG || type == EntityType.SQUID || type == EntityType.GLOW_SQUID) {
             damage = 2.0;
         } else if (type == EntityType.AXOLOTL) {
             damage = 2.5;
@@ -208,7 +208,8 @@ public final class HostileMobConverter {
             damage = 5.0;
         }
         AttributeInstance attack = mob.getAttribute(Attributes.ATTACK_DAMAGE);
-        if (attack != null) {
+        // Zombified piglins already attack: they keep their vanilla, pigman class or Carlos value.
+        if (attack != null && type != EntityType.ZOMBIFIED_PIGLIN) {
             attack.setBaseValue(damage);
         }
         targets.addGoal(1, new PersistentPlayerTargetGoal(mob));

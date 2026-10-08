@@ -147,7 +147,7 @@ public final class EnderMobs {
         }
     }
 
-    /** Short random hop of the "ghast feliz" carrying a pigman (Fabric teleportGhastPigman, 20% chance). */
+    /** Short random hop of the "ghast feliz" carrying a pigman (Fabric teleportGhastPigman: 80% of the hits). */
     public static void teleportGhastPigman(LivingEntity ghast) {
         if (ghast.getRandom().nextFloat() >= 0.8F) {
             return;

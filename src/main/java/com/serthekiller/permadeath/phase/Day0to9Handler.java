@@ -52,6 +52,7 @@ public final class Day0to9Handler implements PhaseHandler {
     private void handleInstantSleep(ServerLevel level) {
         boolean night = PhaseCommon.isNight(level);
         boolean storm = DeathTrain.isActive();
+        boolean skipped = false;
         for (ServerPlayer player : level.players()) {
             UUID id = player.getUUID();
             if (!player.isSleeping()) {
@@ -66,7 +67,11 @@ public final class Day0to9Handler implements PhaseHandler {
                 player.stopSleeping();
                 sleeping.remove(id);
             } else if (night) {
-                PhaseCommon.skipToNextMorning(level);
+                // Several players lying down in the same tick skip one night, not one day each.
+                if (!skipped) {
+                    PhaseCommon.skipToNextMorning(level);
+                    skipped = true;
+                }
                 if (sleepMessageCooldown == 0) {
                     Texts.broadcast(level.getServer(), Component.empty()
                             .append(Component.literal(player.getName().getString()).withStyle(ChatFormatting.WHITE))

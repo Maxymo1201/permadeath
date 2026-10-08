@@ -121,6 +121,7 @@ public final class PermadeathEvents {
         bus.addListener(WorldRules::onBreathe);
         bus.addListener(WorldRules::onDrown);
         serverOnly(bus, EntityTravelToDimensionEvent.class, EndAccess::onTravelToDimension);
+        bus.addListener(EventPriority.LOWEST, PermadeathEvents::onTravelToDimension);
         bus.addListener(PermadeathEvents::onExplosionStart);
         bus.addListener(PermadeathEvents::onExplosionDetonate);
 
@@ -187,6 +188,7 @@ public final class PermadeathEvents {
         EndCrystals.reset();
         EndPillars.reset();
         EnderDragonDemon.reset();
+        GoalRestorer.reset();
         MushroomSpawn.disable();
         MobCapController.restoreVanilla();
         PermadeathMod.LOGGER.info("[Permadeath] Server stopped: runtime state cleared");
@@ -258,13 +260,14 @@ public final class PermadeathEvents {
                 EndPillars.onDragonJoin(level);
             }
         }
-        if (loadedFromDisk) {
+        if (loadedFromDisk || GoalRestorer.consumeTravel(entity)) {
             GoalRestorer.restore(entity);
         }
         // Deferred part: phase logic may spawn, replace or discard entities.
         ServerScheduler.schedule(0, () -> {
             PhaseHandler handler = phase();
-            if (handler != null && !entity.isRemoved() && entity.level() == level) {
+            // isAddedToLevel: a join cancelled by a later listener or refused (duplicate UUID) is not processed.
+            if (handler != null && entity.isAddedToLevel() && !entity.isRemoved() && entity.level() == level) {
                 handler.onEntityJoin(entity, level, loadedFromDisk);
             }
         });
@@ -373,6 +376,16 @@ public final class PermadeathEvents {
         if (event.getEntity() instanceof ServerPlayer player && Permadeath.isRunning()) {
             WelcomeMessage.send(player);
             PlayerHealth.applyHyperAppleBonus(player);
+            if (Permadeath.day() < 40) {
+                // Offline during a setday rollback below D40: the phase end only cleaned the online players.
+                LockedSlots.clear(player);
+            }
+        }
+    }
+
+    private static void onTravelToDimension(EntityTravelToDimensionEvent event) {
+        if (!event.isCanceled() && !event.getEntity().level().isClientSide() && Permadeath.isRunning()) {
+            GoalRestorer.onTravel(event.getEntity());
         }
     }
 

@@ -71,6 +71,14 @@ public final class Day10to19Handler implements PhaseHandler {
 
     private void handleSleepSystem(ServerLevel level) {
         if (!PhaseCommon.isNight(level)) {
+            // Plugin: only at night. Vanilla lets players sleep in a daytime thunderstorm, which skipped the day
+            // without the four players.
+            for (ServerPlayer player : level.players()) {
+                if (player.isSleeping()) {
+                    player.displayClientMessage(Component.literal("Solo puedes dormir de noche.").withStyle(ChatFormatting.RED), false);
+                    player.stopSleeping();
+                }
+            }
             sleeping.clear();
             return;
         }

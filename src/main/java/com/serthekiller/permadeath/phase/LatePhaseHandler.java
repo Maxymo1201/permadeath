@@ -63,7 +63,6 @@ import java.util.List;
  */
 public abstract class LatePhaseHandler implements PhaseHandler {
     private static final String HOSTILE_ENDERMAN_TAG = "permadeath:hostile_enderman";
-    private int mobPassCooldown;
 
     protected abstract SkeletonClasses.Tier tier();
 
@@ -85,7 +84,6 @@ public abstract class LatePhaseHandler implements PhaseHandler {
 
     @Override
     public void onPhaseEnd(ServerLevel overworld) {
-        mobPassCooldown = 0;
         for (ServerPlayer player : overworld.getServer().getPlayerList().getPlayers()) {
             LockedSlots.clear(player);
         }
@@ -284,8 +282,8 @@ public abstract class LatePhaseHandler implements PhaseHandler {
             SpecialMobs.stackRavagersBreakNetherrack(level);
         }
         levelTick(level);
-        if (--mobPassCooldown <= 0) {
-            mobPassCooldown = mobPassInterval();
+        // Per level: one shared countdown decremented by the four levels only ever reached zero in the Overworld.
+        if (level.getGameTime() % mobPassInterval() == 0L) {
             List<Entity> snapshot = new ArrayList<>();
             level.getAllEntities().forEach(snapshot::add);
             for (Entity entity : snapshot) {

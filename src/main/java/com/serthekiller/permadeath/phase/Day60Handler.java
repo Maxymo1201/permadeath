@@ -7,6 +7,7 @@ import com.serthekiller.permadeath.mobs.EnderMobs;
 import com.serthekiller.permadeath.mobs.MobGoals;
 import com.serthekiller.permadeath.mobs.MobReplacements;
 import com.serthekiller.permadeath.mobs.MobTracking;
+import com.serthekiller.permadeath.mobs.PigmanClasses;
 import com.serthekiller.permadeath.mobs.SkeletonClasses;
 import com.serthekiller.permadeath.mobs.SpecialMobs;
 import com.serthekiller.permadeath.util.MobUtil;
@@ -185,7 +186,8 @@ public final class Day60Handler extends LatePhaseHandler {
             vex.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, MobUtil.INFINITE, 2, false, true));
             vex.addEffect(new MobEffectInstance(MobEffects.DAMAGE_BOOST, MobUtil.INFINITE, 2, false, true));
             MobUtil.setBase(vex, Attributes.ATTACK_DAMAGE, 7.0);
-        } else if (entity instanceof Slime) {
+        } else if (entity instanceof Slime && !entity.getTags().contains(PigmanClasses.MAGMA_MOUNT_TAG)) {
+            // The "Mini" mount of the Magma Pigman keeps its 1 HP.
             MobUtil.setMaxHealth(entity, 200.0);
         } else if (entity instanceof Shulker shulker) {
             shulker.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, MobUtil.INFINITE, 5, false, true));
