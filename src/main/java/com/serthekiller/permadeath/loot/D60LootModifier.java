@@ -9,7 +9,6 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.storage.loot.LootContext;
-import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraft.world.level.storage.loot.predicates.LootItemCondition;
 import net.neoforged.neoforge.common.loot.IGlobalLootModifier;
 import net.neoforged.neoforge.common.loot.LootModifier;
@@ -18,13 +17,12 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 import net.neoforged.neoforge.registries.NeoForgeRegistries;
 
 /**
- * D60: no loot in chests (Fabric Day60to69Handler LootTableEvents.REPLACE of the built-in {@code chests/*}
- * tables, and LootTableMixin cancelling every container fill inside The Beginning).
- * <ul>
- *     <li>Built-in chest tables ({@code minecraft:} and {@code permadeath:} namespaces, path {@code chests/})
- *     generate nothing from D60.</li>
- *     <li>In The Beginning from D60 every container fill (loot without block, tool or damage context) is empty.</li>
- * </ul>
+ * D60: no loot in the vanilla structure chests (Fabric Day60to69Handler LootTableEvents.REPLACE of the built-in
+ * {@code minecraft:chests/*} tables).
+ *
+ * <p>The chests of The Beginning keep their loot on D60. Fabric (LootTableMixin) and the plugin also emptied them,
+ * which left every Ytic city and island chest empty on the final day while only the pre-filled containers of the
+ * templates kept items; the user asked for those chests to always have their loot.</p>
  * Registered in {@code data/neoforge/loot_modifiers/global_loot_modifiers.json}.
  */
 public final class D60LootModifier extends LootModifier {
@@ -47,22 +45,17 @@ public final class D60LootModifier extends LootModifier {
         if (!Permadeath.isRunning() || Permadeath.day() < FROM_DAY) {
             return generatedLoot;
         }
-        ResourceLocation id = context.getQueriedLootTableId();
-        if (isBuiltInChestTable(id) || (BeginningDimension.is(context.getLevel()) && isContainerFill(context))) {
+        if (BeginningDimension.is(context.getLevel())) {
+            return generatedLoot;
+        }
+        if (isVanillaChestTable(context.getQueriedLootTableId())) {
             generatedLoot.clear();
         }
         return generatedLoot;
     }
 
-    static boolean isBuiltInChestTable(ResourceLocation id) {
-        return id != null && id.getPath().startsWith("chests/")
-                && ("minecraft".equals(id.getNamespace()) || PermadeathMod.MOD_ID.equals(id.getNamespace()));
-    }
-
-    private static boolean isContainerFill(LootContext context) {
-        return !context.hasParam(LootContextParams.BLOCK_STATE)
-                && !context.hasParam(LootContextParams.TOOL)
-                && !context.hasParam(LootContextParams.DAMAGE_SOURCE);
+    static boolean isVanillaChestTable(ResourceLocation id) {
+        return id != null && "minecraft".equals(id.getNamespace()) && id.getPath().startsWith("chests/");
     }
 
     @Override

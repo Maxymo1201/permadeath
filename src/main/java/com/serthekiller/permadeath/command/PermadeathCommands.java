@@ -5,6 +5,8 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import com.serthekiller.permadeath.PermadeathMod;
+import com.serthekiller.permadeath.beginning.BeginningDimension;
 import com.serthekiller.permadeath.beginning.BeginningEvents;
 import com.serthekiller.permadeath.core.PermadeathCalendar;
 import com.serthekiller.permadeath.core.ProgressionState;
@@ -32,17 +34,34 @@ import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
+import net.minecraft.core.HolderSet;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.stats.Stats;
+import net.minecraft.world.Container;
+import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.RandomizableContainerBlockEntity;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.levelgen.structure.Structure;
+import net.minecraft.world.level.storage.loot.LootParams;
+import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets;
+import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
+import net.minecraft.world.phys.Vec3;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -123,7 +142,8 @@ public final class PermadeathCommands {
                 .then(Commands.literal("event").requires(adminRequire())
                         .then(Commands.literal("shulkershell").executes(PermadeathCommands::shulkerEvent))
                         .then(Commands.literal("lifeorb").executes(PermadeathCommands::lifeOrbEvent)))
-                .then(Commands.literal("debug").requires(adminRequire()).executes(PermadeathCommands::debug)));
+                .then(Commands.literal("debug").requires(adminRequire()).executes(PermadeathCommands::debug)
+                        .then(Commands.literal("beginningloot").executes(PermadeathCommands::debugBeginningLoot))));
     }
 
     private static void reply(CommandContext<CommandSourceStack> ctx, String text, boolean broadcastToOps) {
@@ -472,6 +492,70 @@ public final class PermadeathCommands {
         String info = SurvivalAchievementData.get(ctx.getSource().getServer()).progressInfo(player, Permadeath.day());
         reply(ctx, info, false);
         return 1;
+    }
+
+    /**
+     * Checks the chests of the nearest Ytic city of The Beginning and of the islands around it without opening
+     * them: every container with a loot table is rolled into a scratch inventory (global loot modifiers included).
+     */
+    private static int debugBeginningLoot(CommandContext<CommandSourceStack> ctx) {
+        MinecraftServer server = ctx.getSource().getServer();
+        ServerLevel beginning = BeginningDimension.level(server);
+        if (beginning == null) {
+            return fail(ctx, "§cThe Beginning no está cargado.");
+        }
+        Holder<Structure> ytic = beginning.registryAccess().registryOrThrow(Registries.STRUCTURE)
+                .getHolderOrThrow(ResourceKey.create(Registries.STRUCTURE, ResourceLocation.fromNamespaceAndPath(PermadeathMod.MOD_ID, "ytic_base")));
+        var found = beginning.getChunkSource().getGenerator().findNearestMapStructure(beginning, HolderSet.direct(ytic), BlockPos.ZERO, 64, false);
+        if (found == null) {
+            return fail(ctx, "§cNo hay ninguna ciudad Ytic a menos de 64 chunks de (0, 0).");
+        }
+        BlockPos origin = found.getFirst();
+        ChunkPos center = new ChunkPos(origin);
+        int containers = 0;
+        int withTable = 0;
+        int empty = 0;
+        StringBuilder details = new StringBuilder();
+        for (int cx = center.x - 6; cx <= center.x + 6; cx++) {
+            for (int cz = center.z - 6; cz <= center.z + 6; cz++) {
+                LevelChunk chunk = beginning.getChunk(cx, cz);
+                for (BlockEntity be : List.copyOf(chunk.getBlockEntities().values())) {
+                    if (!(be instanceof RandomizableContainerBlockEntity container)) {
+                        continue;
+                    }
+                    containers++;
+                    int items;
+                    if (container.getLootTable() != null) {
+                        withTable++;
+                        SimpleContainer scratch = new SimpleContainer(container.getContainerSize());
+                        server.reloadableRegistries().getLootTable(container.getLootTable()).fill(scratch,
+                                new LootParams.Builder(beginning).withParameter(LootContextParams.ORIGIN, Vec3.atCenterOf(be.getBlockPos()))
+                                        .create(LootContextParamSets.CHEST), container.getLootTableSeed());
+                        items = countItems(scratch);
+                    } else {
+                        items = countItems(container);
+                    }
+                    if (items == 0) {
+                        empty++;
+                    }
+                    details.append("\n§7").append(be.getBlockPos().toShortString()).append(" §f")
+                            .append(container.getLootTable() == null ? "sin tabla" : container.getLootTable().location().toString())
+                            .append(" §7objetos: §f").append(items);
+                }
+            }
+        }
+        PermadeathMod.LOGGER.info("[Permadeath] Beginning chests near {}: {} containers, {} with loot table, {} empty", origin, containers, withTable, empty);
+        reply(ctx, "§6Cofres de The Beginning junto a la ciudad Ytic de " + origin.toShortString() + ": §f" + containers
+                + " §7(con tabla de loot: §f" + withTable + "§7, vacíos: §f" + empty + "§7)" + details, false);
+        return 1;
+    }
+
+    private static int countItems(Container container) {
+        int count = 0;
+        for (int i = 0; i < container.getContainerSize(); i++) {
+            count += container.getItem(i).getCount();
+        }
+        return count;
     }
 
     private static int debug(CommandContext<CommandSourceStack> ctx) {
