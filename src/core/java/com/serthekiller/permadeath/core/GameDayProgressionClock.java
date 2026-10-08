@@ -110,6 +110,11 @@ public final class GameDayProgressionClock implements ProgressionClock {
                 warnLog.accept("Overworld time is behind the Permadeath calendar (world PD day " + raw + " < effective day "
                         + state.maxEffectiveDay + "). /time rollback detected: Permadeath will NOT go back.");
             }
+            // Re-anchor on the current world day: waiting for the world to catch up froze the calendar for as many
+            // Minecraft days as were rolled back (all of them after a plain /time set day, which resets the counter).
+            state.baseWorldDay = currentWorldDay() - state.maxEffectiveDay;
+            state.markChanged();
+            raw = state.maxEffectiveDay;
         } else {
             rollbackReported = false;
         }

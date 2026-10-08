@@ -37,8 +37,11 @@ tick de servidor (`DayController`) y, justo después:
 * **Dormir** adelanta el `dayTime` y por tanto el calendario, igual que en vanilla (test
   `sleepingAdvancesTheCalendar`).
 * **Protección frente a retrocesos:** se guarda `maxEffectiveDay`. Si alguien hace `/time set 0` o retrocede
-  el reloj del mundo, el día Permadeath **no baja**; se avisa una vez en el log (test
-  `timeRollbackNeverMovesBack`).
+  el reloj del mundo, el día Permadeath **no baja**; se avisa una vez en el log y `baseWorldDay` se reancla al
+  día de mundo actual, así que el siguiente día de Minecraft es el siguiente día Permadeath. Antes el calendario
+  se congelaba hasta que el mundo volvía a alcanzar el día perdido: con un simple `/time set day` (que pone el
+  contador de días a 0), tantos días de Minecraft como tuviera el mundo (tests `timeRollbackNeverMovesBack` y
+  `timeSetDayDoesNotFreezeTheCalendar`).
 * **No usa el reloj del sistema** para el calendario. Los TPS solo afectan a la velocidad con que avanza el
   `dayTime`, como en vanilla.
 * `/permadeath setday N` reancla `baseWorldDay = díaMundo − N`, fija `maxEffectiveDay = N` y borra los hitos

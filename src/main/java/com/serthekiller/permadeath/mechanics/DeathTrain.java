@@ -97,6 +97,11 @@ public final class DeathTrain {
                 setNaturalRegeneration(server, false);
                 state.deathTrainUhcActive = true;
                 state.markChanged();
+            } else if (!DayRules.deathTrainDisablesRegeneration(day) && state.deathTrainUhcActive) {
+                // Day set back below D50 during the storm: the UHC rule only exists from D50.
+                setNaturalRegeneration(server, true);
+                state.deathTrainUhcActive = false;
+                state.markChanged();
             }
             if (tickCounter % 20L == 0L) {
                 Component timer = Component.literal("Quedan: " + TimeFormat.hms(remaining) + " de tormenta").withStyle(ChatFormatting.GRAY);
@@ -157,10 +162,14 @@ public final class DeathTrain {
     /** /permadeath resetstorm and /permadeath reset. */
     public static void reset(MinecraftServer server) {
         ProgressionState state = Permadeath.state();
+        boolean uhc = state.deathTrainUhcActive;
         state.deathTrainEndEpochMillis = 0L;
         state.deathTrainUhcActive = false;
         state.markChanged();
-        setNaturalRegeneration(server, true);
+        if (uhc) {
+            // Only undo what the storm did: a server that keeps naturalRegeneration off on its own stays that way.
+            setNaturalRegeneration(server, true);
+        }
         server.overworld().setWeatherParameters(6000, 0, false, false);
         PermadeathMod.LOGGER.info("[Permadeath] Death Train reset manually");
     }

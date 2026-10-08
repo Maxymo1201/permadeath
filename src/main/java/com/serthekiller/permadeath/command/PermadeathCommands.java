@@ -267,6 +267,13 @@ public final class PermadeathCommands {
         MinecraftServer server = ctx.getSource().getServer();
         SurvivalAchievementData.get(server).flagStormResetUsed(server);
         clearDeathTags(server);
+        PortalState portal = PortalState.get(server);
+        if (portal.hasSpawned && portal.getPortalPos() == null) {
+            // Portal of an older build without saved coordinates: BeginningLocation sends admins here so that the
+            // D40 milestone generates a new one (it never did while the old state said "spawned").
+            portal.hasSpawned = false;
+            portal.setDirty();
+        }
         Permadeath.clock().setDay(0);
         Permadeath.data().setDirty();
         DeathTrain.reset(server);

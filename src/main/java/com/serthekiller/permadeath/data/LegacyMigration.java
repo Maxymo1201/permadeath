@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.ZoneId;
+import java.util.function.Consumer;
 
 /**
  * Imports the loose state files written by the Fabric mod into {@link PermadeathData}. Runs once per world;
@@ -40,31 +41,16 @@ public final class LegacyMigration {
         }
         long now = System.currentTimeMillis();
         LegacyFabricState legacy = new LegacyFabricState();
-        try {
-            if (Files.exists(date)) {
-                legacy.parseDateFile(read(date), LegacyFabricState.today(ZoneId.systemDefault(), now));
-            }
-            if (Files.exists(storm)) {
-                legacy.parseStormFile(read(storm));
-            }
-            if (Files.exists(boost)) {
-                legacy.notes.add("permadeath_boost.txt: ignorado (el nivel de buffs del Death Train ahora se deriva del día)");
-            }
-            if (Files.exists(wither)) {
-                legacy.parseWitherFile(read(wither));
-            }
-            if (Files.exists(lifeOrb)) {
-                legacy.parseLifeOrbFile(read(lifeOrb));
-            }
-            if (Files.exists(mikecrack)) {
-                legacy.parseMikecrackFile(read(mikecrack));
-            }
-            if (Files.exists(apples)) {
-                legacy.parseHyperAppleJson(read(apples));
-            }
-        } catch (RuntimeException | IOException e) {
-            PermadeathMod.LOGGER.error("[Permadeath] Legacy Fabric state could not be fully parsed; the original files are kept untouched", e);
+        // Each file on its own: one damaged file (e.g. a line truncated by a crash) used to skip every later one.
+        parse(date, text -> legacy.parseDateFile(text, LegacyFabricState.today(ZoneId.systemDefault(), now)));
+        parse(storm, legacy::parseStormFile);
+        if (Files.exists(boost)) {
+            legacy.notes.add("permadeath_boost.txt: ignorado (el nivel de buffs del Death Train ahora se deriva del día)");
         }
+        parse(wither, legacy::parseWitherFile);
+        parse(lifeOrb, legacy::parseLifeOrbFile);
+        parse(mikecrack, legacy::parseMikecrackFile);
+        parse(apples, legacy::parseHyperAppleJson);
         if (state.initialized) {
             // The NeoForge calendar already exists: never overwrite it with older legacy data.
             legacy.legacyDay = null;
@@ -76,6 +62,17 @@ public final class LegacyMigration {
             PermadeathMod.LOGGER.info("[Permadeath] legacy: {}", note);
         }
         PermadeathMod.LOGGER.info("[Permadeath] Legacy state migrated successfully (original files kept in {})", root.toAbsolutePath());
+    }
+
+    private static void parse(Path path, Consumer<String> parser) {
+        if (!Files.exists(path)) {
+            return;
+        }
+        try {
+            parser.accept(read(path));
+        } catch (RuntimeException | IOException e) {
+            PermadeathMod.LOGGER.error("[Permadeath] Legacy Fabric file {} could not be parsed and is skipped (the file is kept untouched)", path, e);
+        }
     }
 
     private static String read(Path path) throws IOException {

@@ -71,10 +71,25 @@ class GameDayProgressionClockTest {
         // restart keeps the maximum
         GameDayProgressionClock restarted = start(state, time, warnings);
         assertEquals(40, restarted.getDay());
-        // moving forward again past the maximum progresses
-        time.set(41 * DAY);
+        // the calendar is re-anchored: the next Minecraft day is the next Permadeath day (no freeze until day 41)
+        time.set(31 * DAY);
         restarted.update();
         assertEquals(41, restarted.getDay());
+    }
+
+    @Test
+    void timeSetDayDoesNotFreezeTheCalendar() {
+        AtomicLong time = new AtomicLong(0);
+        ProgressionState state = new ProgressionState();
+        GameDayProgressionClock c = start(state, time, new ArrayList<>());
+        time.set(20 * DAY + 5000);
+        c.update();
+        assertEquals(20, c.getDay());
+        time.set(1000); // vanilla /time set day: absolute time, world day counter back to 0
+        c.update();
+        assertEquals(20, c.getDay(), "never goes back");
+        time.set(DAY + 1000);
+        assertEquals(21, c.update().newDay(), "one Minecraft day later it is D21, not 20 days later");
     }
 
     @Test
