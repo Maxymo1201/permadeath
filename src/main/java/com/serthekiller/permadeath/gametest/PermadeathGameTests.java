@@ -3,7 +3,9 @@ package com.serthekiller.permadeath.gametest;
 import com.mojang.authlib.GameProfile;
 import com.serthekiller.permadeath.PermadeathMod;
 import com.serthekiller.permadeath.core.PermadeathCalendar;
+import com.serthekiller.permadeath.data.DeathRecordsData;
 import com.serthekiller.permadeath.end.EnderDragonDemon;
+import com.serthekiller.permadeath.mechanics.DeathHandler;
 import com.serthekiller.permadeath.mechanics.DeathTrain;
 import com.serthekiller.permadeath.mechanics.LockedSlots;
 import com.serthekiller.permadeath.mechanics.PlayerHealth;
@@ -58,9 +60,12 @@ import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.crafting.CraftingInput;
+import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CrafterBlock;
 import net.minecraft.world.level.storage.loot.BuiltInLootTables;
 import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.LootTable;
@@ -383,6 +388,60 @@ public final class PermadeathGameTests {
             player.closeContainer();
             finish(helper, player);
         });
+    }
+
+    @GameTest(template = EMPTY, batch = "d40", timeoutTicks = 60)
+    public static void relicOnTheCursorKeepsTheSlotsUnlocked(GameTestHelper helper) {
+        ServerPlayer player = mockPlayer(helper);
+        helper.runAtTickTime(5, () -> {
+            // Full inventory, End Relic picked up with the cursor.
+            for (int i = 0; i < 36; i++) {
+                player.getInventory().setItem(i, new ItemStack(Items.COBBLESTONE, 64));
+            }
+            player.getInventory().setItem(40, new ItemStack(Items.TORCH, 16));
+            player.containerMenu.setCarried(new ItemStack(ModItems.END_RELIC.get()));
+        });
+        helper.runAtTickTime(10, () -> {
+            helper.assertTrue(player.getInventory().getItem(4).is(Items.COBBLESTONE), "slot 4 was locked while the relic was on the cursor");
+            helper.assertTrue(player.getInventory().getItem(40).is(Items.TORCH), "the off hand was locked while the relic was on the cursor");
+            helper.assertTrue(helper.getLevel().getEntitiesOfClass(ItemEntity.class, player.getBoundingBox().inflate(8.0)).isEmpty(),
+                    "nothing may be thrown on the ground");
+            player.containerMenu.setCarried(ItemStack.EMPTY);
+            finish(helper, player);
+        });
+    }
+
+    @GameTest(template = EMPTY, batch = "d40", timeoutTicks = 60)
+    public static void spectatorDeathIsNoNewPermadeath(GameTestHelper helper) {
+        ServerPlayer player = mockPlayer(helper);
+        helper.runAtTickTime(5, () -> {
+            player.setGameMode(GameType.SPECTATOR);
+            // /kill (and the void) bypass the invulnerability of spectators.
+            player.kill();
+        });
+        helper.runAtTickTime(10, () -> {
+            helper.assertFalse(player.isAlive(), "the spectator should have died");
+            helper.assertTrue(DeathRecordsData.get(helper.getLevel().getServer()).get(player.getUUID()) == null,
+                    "a spectator killed by /kill or the void was recorded as a new Permadeath");
+            helper.assertFalse(player.getTags().contains(DeathHandler.DEATH_TAG), "a spectator death must not be handled");
+            finish(helper, player);
+        });
+    }
+
+    @GameTest(template = EMPTY, batch = "d40")
+    public static void crafterRefusesTheSpecialRecipes(GameTestHelper helper) {
+        // Super Golden Apple+: 8 gold ingots on every edge, 1 golden apple in the centre.
+        List<ItemStack> items = new ArrayList<>();
+        for (int i = 0; i < 9; i++) {
+            items.add(i == 4 ? new ItemStack(Items.GOLDEN_APPLE) : new ItemStack(Items.GOLD_INGOT, 8));
+        }
+        CraftingInput input = CraftingInput.of(3, 3, items);
+        ServerLevel level = helper.getLevel();
+        helper.assertTrue(level.getRecipeManager().getRecipeFor(RecipeType.CRAFTING, input, level).isPresent(),
+                "the Super Golden Apple+ recipe must match by hand on D40");
+        helper.assertTrue(CrafterBlock.getPotentialResults(level, input).isEmpty(),
+                "the Crafter must refuse the Super Golden Apple+ (it skipped the extra cost)");
+        helper.succeed();
     }
 
     @GameTest(template = EMPTY, batch = "d40tnt", timeoutTicks = 60)

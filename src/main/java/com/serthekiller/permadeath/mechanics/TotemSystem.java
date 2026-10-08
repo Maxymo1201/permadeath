@@ -84,12 +84,23 @@ public final class TotemSystem {
         int required = rule.requiredTotems();
         int available = countTotems(player);
         boolean medal = isSurvivorMedal(activating);
+        // Plugin doPlayerHaveSpecialTotem: the medal skips the roll from either hand (vanilla activates the main hand
+        // first, so a normal totem there hid a medal in the off hand).
+        ItemStack otherHand = player.getItemInHand(hand == InteractionHand.MAIN_HAND ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND);
+        boolean otherMedal = !medal && isSurvivorMedal(otherHand);
 
         if (available < required) {
             consumeExtras(player, hand, available);
             activating.shrink(activating.getCount());
             Texts.broadcast(player.server, "§7¡" + name + " no tenía suficientes tótems en el inventario!");
             return false;
+        }
+        if (otherMedal) {
+            // The medal is the extra totem spent, as in the plugin.
+            otherHand.shrink(1);
+            consumeExtras(player, hand, required - 2);
+            Texts.broadcast(player.server, "§7El jugador " + name + " ha usado su medalla de superviviente.");
+            return true;
         }
         if (medal) {
             consumeExtras(player, hand, required - 1);

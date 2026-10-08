@@ -13,7 +13,9 @@ import net.minecraft.world.item.Items;
 import net.neoforged.neoforge.event.entity.living.LivingSwapItemsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerContainerEvent;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -64,8 +66,15 @@ public final class LockedSlots {
         Inventory inventory = player.getInventory();
         boolean endRelic = false;
         boolean beginningRelic = false;
+        // A relic being moved (on the cursor or in the 2x2 grid) still counts: otherwise every slot it unlocks was
+        // blocked for a tick and its items were pushed out of a full inventory onto the ground.
+        List<ItemStack> held = new ArrayList<>(inventory.getContainerSize() + 5);
         for (int i = 0; i < inventory.getContainerSize(); i++) {
-            ItemStack stack = inventory.getItem(i);
+            held.add(inventory.getItem(i));
+        }
+        held.add(player.containerMenu.getCarried());
+        held.addAll(player.inventoryMenu.getCraftSlots().getItems());
+        for (ItemStack stack : held) {
             if (stack.is(ModItems.END_RELIC.get())) {
                 endRelic = true;
             } else if (stack.is(ModItems.BEGINNING_RELIC.get())) {
@@ -114,14 +123,11 @@ public final class LockedSlots {
     }
 
     /**
-     * A number-key swap from an open container put a container item in the locked slot and the blocker in the
-     * container: give the item back its container slot instead of throwing it on the ground (lost over the void in
-     * The Beginning).
+     * A number-key swap from an open container (or from the 2x2 crafting grid) put its item in the locked slot and
+     * the blocker in its place: give the item back that slot instead of throwing it on the ground (lost over the void
+     * in The Beginning).
      */
     private static boolean undoContainerSwap(ServerPlayer player, ItemStack stack) {
-        if (player.containerMenu == player.inventoryMenu) {
-            return false;
-        }
         for (Slot slot : player.containerMenu.slots) {
             if (slot.container != player.getInventory() && isBlocker(slot.getItem())) {
                 slot.set(stack);

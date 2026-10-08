@@ -94,6 +94,7 @@ public final class PlayerHealth {
     static double armorBonus(ServerPlayer player) {
         int pieces = 0;
         double first = 0.0;
+        boolean hasFirst = false;
         for (EquipmentSlot slot : EquipmentSlot.values()) {
             if (slot.getType() != EquipmentSlot.Type.HUMANOID_ARMOR) {
                 continue;
@@ -108,8 +109,10 @@ public final class PlayerHealth {
                 continue;
             }
             pieces++;
-            if (first == 0.0) {
+            // A first piece with no bonus must not let the next pieces start a new set.
+            if (!hasFirst) {
                 first = bonus;
+                hasFirst = true;
             } else if (first != bonus) {
                 return 0.0;
             }

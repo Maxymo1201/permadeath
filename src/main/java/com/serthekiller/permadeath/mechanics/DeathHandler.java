@@ -36,6 +36,7 @@ import net.minecraft.world.item.component.ItemLore;
 import net.minecraft.world.item.component.ResolvableProfile;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.AbstractSkullBlock;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.SkullBlock;
 import net.minecraft.world.level.block.entity.SkullBlockEntity;
@@ -62,6 +63,10 @@ public final class DeathHandler {
 
     /** Called from LivingDeathEvent; the work is done at the end of the tick, after the vanilla death logic. */
     public static void onPlayerDeath(ServerPlayer player, DamageSource source) {
+        if (player.isSpectator()) {
+            // Already dead (host of an integrated server) or an observing OP: the void or /kill is no new Permadeath.
+            return;
+        }
         // The day of the death (not of the end of the tick) decides the Death Train duration and the sounds.
         int day = Permadeath.day();
         LocalDateTime now = LocalDateTime.now();
@@ -80,10 +85,16 @@ public final class DeathHandler {
         ServerLevel level = player.serverLevel();
         String name = player.getName().getString();
         BlockPos deathPos = player.blockPosition();
+        // The client may already have respawned (a new ServerPlayer) or left; the death applies to the live player.
+        ServerPlayer live = server.getPlayerList().getPlayer(player.getUUID());
 
         SurvivalAchievementData.get(server).recordDeath(player.getUUID());
         player.addTag(DEATH_TAG);
         player.setGameMode(GameType.SPECTATOR);
+        if (live != null && live != player) {
+            live.addTag(DEATH_TAG);
+            live.setGameMode(GameType.SPECTATOR);
+        }
         sendTitles(server, name);
         broadcastSound(server, SoundEvents.BLAZE_DEATH, 100.0F, 0.3F);
         ServerScheduler.schedule(100, () -> broadcastSound(server, SoundEvents.SKELETON_HORSE_DEATH, 100.0F, 1.0F));
@@ -95,7 +106,10 @@ public final class DeathHandler {
 
         ServerScheduler.schedule(0, () -> {
             try {
-                if (player.connection != null && !player.isAlive()) {
+                // Only the dead player that is still connected and not respawned: a respawn of a disconnected player
+                // would add a ghost player to the world.
+                if (player.connection != null && !player.hasDisconnected() && !player.isAlive()
+                        && server.getPlayerList().getPlayer(player.getUUID()) == player) {
                     player.connection.handleClientCommand(new ServerboundClientCommandPacket(ServerboundClientCommandPacket.Action.PERFORM_RESPAWN));
                 }
             } catch (RuntimeException e) {
@@ -126,9 +140,10 @@ public final class DeathHandler {
         }
     }
 
+    /** Each player hears the sound once, at their own position (a level sound at every player was heard N times). */
     private static void broadcastSound(MinecraftServer server, SoundEvent sound, float volume, float pitch) {
         for (ServerPlayer p : server.getPlayerList().getPlayers()) {
-            p.serverLevel().playSound(null, p.blockPosition(), sound, SoundSource.MASTER, volume, pitch);
+            p.playNotifySound(sound, SoundSource.MASTER, volume, pitch);
         }
     }
 
@@ -149,7 +164,8 @@ public final class DeathHandler {
                 if (level.getBlockState(base.above()).isAir() || level.getBlockState(skull).isAir()) {
                     PermadeathMod.LOGGER.info("[Permadeath] Repairing death monument at {}", base);
                     placeMonument(level, base, skull, rotation, profile);
-                    for (ItemEntity item : level.getEntitiesOfClass(ItemEntity.class, new AABB(skull).inflate(3.0), i -> i.getItem().is(Items.PLAYER_HEAD))) {
+                    // Only the head of this monument: trophy heads dropped from the victim's inventory stay.
+                    for (ItemEntity item : level.getEntitiesOfClass(ItemEntity.class, new AABB(skull).inflate(3.0), i -> isHeadOf(i.getItem(), profile))) {
                         item.discard();
                     }
                 }
@@ -188,7 +204,26 @@ public final class DeathHandler {
         return Component.literal(legacyText).withStyle(style -> style.withItalic(false));
     }
 
+    private static boolean isHeadOf(ItemStack stack, GameProfile profile) {
+        ResolvableProfile owner = stack.get(DataComponents.PROFILE);
+        return stack.is(Items.PLAYER_HEAD) && owner != null && owner.id().filter(profile.getId()::equals).isPresent();
+    }
+
+    /**
+     * A container where the monument goes (a shulker box under the body) is broken with its drops first: replacing it
+     * directly lost the shulker box and its contents.
+     */
+    private static void breakContainer(ServerLevel level, BlockPos pos) {
+        BlockState state = level.getBlockState(pos);
+        if (state.hasBlockEntity() && !(state.getBlock() instanceof AbstractSkullBlock) && state.getDestroySpeed(level, pos) >= 0.0F) {
+            level.destroyBlock(pos, true);
+        }
+    }
+
     private static void placeMonument(ServerLevel level, BlockPos base, BlockPos skull, int rotation, GameProfile profile) {
+        breakContainer(level, base);
+        breakContainer(level, base.above());
+        breakContainer(level, skull);
         level.setBlock(base, Blocks.BEDROCK.defaultBlockState(), 3);
         level.setBlock(base.above(), Blocks.OAK_FENCE.defaultBlockState(), 3);
         BlockState skullState = Blocks.PLAYER_HEAD.defaultBlockState().setValue(SkullBlock.ROTATION, rotation);
@@ -242,17 +277,18 @@ public final class DeathHandler {
     // ------------------------------------------------------------------------------------------------ ban
 
     /**
-     * Permanent ban 4 s (80 ticks) after the death. The owner of an integrated (single player / LAN) server
-     * is not banned: kicking the host would close the world (the Fabric mod did it anyway).
+     * Permanent ban, kick 4 s (80 ticks) after the death. The ban is saved at once (banned-players.json), so a stop
+     * or crash during those 4 s no longer lets the player back in. The owner of an integrated (single player / LAN)
+     * server is not banned: kicking the host would close the world (the Fabric mod did it anyway).
      */
     private static void scheduleBan(MinecraftServer server, GameProfile profile) {
+        if (server.isSingleplayerOwner(profile)) {
+            PermadeathMod.LOGGER.info("[Permadeath] {} is the owner of the integrated server: not banned", profile.getName());
+            return;
+        }
+        server.getPlayerList().getBans().add(new UserBanListEntry(profile, null, "Permadeath", null,
+                "Has muerto en Permadeath. Baneo permanente."));
         ServerScheduler.schedule(80, () -> {
-            if (server.isSingleplayerOwner(profile)) {
-                PermadeathMod.LOGGER.info("[Permadeath] {} is the owner of the integrated server: not banned", profile.getName());
-                return;
-            }
-            server.getPlayerList().getBans().add(new UserBanListEntry(profile, null, "Permadeath", null,
-                    "Has muerto en Permadeath. Baneo permanente."));
             ServerPlayer current = server.getPlayerList().getPlayer(profile.getId());
             if (current != null) {
                 current.connection.disconnect(Component.literal("Has sido PERMABANEADO").withStyle(ChatFormatting.RED));

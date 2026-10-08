@@ -37,6 +37,8 @@ public class HyperGoldenApplePlus extends Item {
             if (day < 40) {
                 player.sendSystemMessage(Component.literal("Esta manzana es demasiado poderosa para ser consumida antes del día 40.")
                         .withStyle(ChatFormatting.RED));
+                // The client already ate it: show the apple again.
+                player.containerMenu.sendAllDataToRemote();
                 return stack;
             }
             if (consumed >= DayRules.maxHyperApples(day)) {
@@ -44,6 +46,7 @@ public class HyperGoldenApplePlus extends Item {
                         ? "Ya has alcanzado el límite de 1 manzana antes del día 60."
                         : "Ya has consumido el máximo permitido (2 manzanas).").withStyle(ChatFormatting.RED));
                 level.playSound(null, player.getX(), player.getY(), player.getZ(), SoundEvents.FIRE_EXTINGUISH, SoundSource.PLAYERS, 0.5F, 1.0F);
+                player.containerMenu.sendAllDataToRemote();
                 return stack;
             }
             Permadeath.state().hyperApplesConsumed.put(player.getUUID(), consumed + 1);

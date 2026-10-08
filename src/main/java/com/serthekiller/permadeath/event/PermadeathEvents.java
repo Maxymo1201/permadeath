@@ -392,6 +392,7 @@ public final class PermadeathEvents {
     private static void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer player && Permadeath.isRunning()) {
             LifeOrb.onLogout(player);
+            ShulkerShellEvent.onLogout(player);
         }
     }
 

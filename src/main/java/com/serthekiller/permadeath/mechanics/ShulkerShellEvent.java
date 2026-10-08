@@ -41,6 +41,11 @@ public final class ShulkerShellEvent {
         return true;
     }
 
+    /** Logged out players leave the boss bar (it kept them and their closed connections). */
+    public static void onLogout(ServerPlayer player) {
+        BOSS_BAR.removePlayer(player);
+    }
+
     public static void tick(MinecraftServer server) {
         ProgressionState state = Permadeath.state();
         if (state.shulkerEventEndEpochMillis <= 0L || server.getTickCount() % 20 != 0) {

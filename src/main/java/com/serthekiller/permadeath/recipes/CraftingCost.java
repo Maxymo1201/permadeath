@@ -6,6 +6,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;
 import net.minecraft.world.inventory.CraftingContainer;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 
@@ -21,6 +22,12 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent;
  */
 public final class CraftingCost {
     private CraftingCost() {
+    }
+
+    /** The recipes whose extra ingredients are taken here (only by hand: the Crafter is refused them). */
+    public static boolean hasExtraCost(Recipe<?> recipe) {
+        return recipe instanceof PermadeathRecipes.HyperApple || recipe instanceof PermadeathRecipes.SuperApple
+                || recipe instanceof PermadeathRecipes.BeginningRelic || recipe instanceof PermadeathRecipes.LifeOrb;
     }
 
     public static void onItemCrafted(PlayerEvent.ItemCraftedEvent event) {
