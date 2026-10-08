@@ -398,10 +398,10 @@ public final class PermadeathEvents {
     }
 
     private static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
+        GameplayRules.onRightClickBlock(event);
         if (event.getLevel().isClientSide() || !Permadeath.isRunning()) {
             return;
         }
-        GameplayRules.onRightClickBlock(event);
         PhaseHandler handler = phase();
         if (handler != null) {
             handler.onRightClickBlock(event);
@@ -409,7 +409,8 @@ public final class PermadeathEvents {
     }
 
     private static void onRightClickItem(PlayerInteractEvent.RightClickItem event) {
-        if (event.getLevel().isClientSide() || !Permadeath.isRunning()) {
+        GameplayRules.onRightClickItemBothSides(event);
+        if (event.isCanceled() || event.getLevel().isClientSide() || !Permadeath.isRunning()) {
             return;
         }
         MilkCurse.onRightClickItem(event);

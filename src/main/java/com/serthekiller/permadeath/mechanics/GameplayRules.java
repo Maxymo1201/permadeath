@@ -654,10 +654,7 @@ public final class GameplayRules {
      * (plugin BeginningManager#onBucket: no water clutches or lava over the void islands).
      */
     public static void onRightClickItem(PlayerInteractEvent.RightClickItem event) {
-        if (event.getLevel().dimension() == BeginningDimension.LEVEL_KEY && event.getItemStack().getItem() instanceof BucketItem bucket
-                && bucket.content != Fluids.EMPTY) {
-            event.setCanceled(true);
-            event.setCancellationResult(InteractionResult.FAIL);
+        if (isBeginningBucket(event)) {
             return;
         }
         if (!event.getItemStack().is(Items.BUCKET) || day() < 50 || event.getLevel().isClientSide()) {
@@ -672,8 +669,32 @@ public final class GameplayRules {
             if (fluid.is(FluidTags.WATER) || fluid.is(FluidTags.LAVA)) {
                 event.setCanceled(true);
                 event.setCancellationResult(InteractionResult.FAIL);
+                if (player instanceof ServerPlayer serverPlayer) {
+                    // The client already showed a filled bucket (it does not know the day): send it the real one.
+                    serverPlayer.containerMenu.sendAllDataToRemote();
+                }
             }
         }
+    }
+
+    /**
+     * The Beginning forbids emptying any bucket. It only depends on the dimension, so it is decided on both sides
+     * (fired from {@link #onRightClickItemBothSides}) and the client never shows a fluid that the server refuses.
+     * @return true when the use was cancelled
+     */
+    private static boolean isBeginningBucket(PlayerInteractEvent.RightClickItem event) {
+        if (event.getLevel().dimension() == BeginningDimension.LEVEL_KEY && event.getItemStack().getItem() instanceof BucketItem bucket
+                && bucket.content != Fluids.EMPTY) {
+            event.setCanceled(true);
+            event.setCancellationResult(InteractionResult.FAIL);
+            return true;
+        }
+        return false;
+    }
+
+    /** Client and server part of the bucket rules (no Permadeath state needed). */
+    public static void onRightClickItemBothSides(PlayerInteractEvent.RightClickItem event) {
+        isBeginningBucket(event);
     }
 
     /**
@@ -686,7 +707,10 @@ public final class GameplayRules {
         }
     }
 
-    /** The powder snow bucket is placed through the block interaction: also forbidden in The Beginning. */
+    /**
+     * The powder snow bucket is placed through the block interaction: also forbidden in The Beginning (both sides,
+     * like {@link #onRightClickItemBothSides}).
+     */
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
         if (event.getLevel().dimension() == BeginningDimension.LEVEL_KEY && event.getItemStack().getItem() instanceof SolidBucketItem) {
             event.setUseItem(TriState.FALSE);

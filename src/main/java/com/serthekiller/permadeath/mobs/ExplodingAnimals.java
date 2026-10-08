@@ -7,6 +7,7 @@ import com.serthekiller.permadeath.util.ServerScheduler;
 import com.serthekiller.permadeath.util.Texts;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -87,6 +88,7 @@ public final class ExplodingAnimals {
 
     private static final Map<UUID, Integer> SUPERNOVA_TIMERS = new HashMap<>();
     private static final Map<UUID, Float> SUPERNOVA_POWER = new HashMap<>();
+    private static final Map<UUID, ResourceKey<Level>> SUPERNOVA_LEVEL = new HashMap<>();
     private static final Set<UUID> WARNED_CATS = new HashSet<>();
 
     private ExplodingAnimals() {
@@ -95,6 +97,7 @@ public final class ExplodingAnimals {
     public static void reset() {
         SUPERNOVA_TIMERS.clear();
         SUPERNOVA_POWER.clear();
+        SUPERNOVA_LEVEL.clear();
         WARNED_CATS.clear();
     }
 
@@ -136,20 +139,26 @@ public final class ExplodingAnimals {
                 + cat.getBlockY() + " " + cat.getBlockZ() + " (" + level.dimension().location() + ").").withStyle(ChatFormatting.RED));
         SUPERNOVA_TIMERS.put(cat.getUUID(), DayRules.SUPERNOVA_FUSE_TICKS);
         SUPERNOVA_POWER.put(cat.getUUID(), power);
+        SUPERNOVA_LEVEL.put(cat.getUUID(), level.dimension());
     }
 
+    /**
+     * Counts down the pending supernovas of {@code level}. A cat whose chunk was unloaded is forgotten (and armed
+     * again when a player comes back), so it never keeps one of the two pending slots forever.
+     */
     private static void processSupernovaTimers(ServerLevel level, int elapsed) {
         Iterator<Map.Entry<UUID, Integer>> it = SUPERNOVA_TIMERS.entrySet().iterator();
         while (it.hasNext()) {
             Map.Entry<UUID, Integer> entry = it.next();
-            Entity entity = level.getEntity(entry.getKey());
-            if (entity == null) {
+            if (SUPERNOVA_LEVEL.get(entry.getKey()) != level.dimension()) {
                 continue;
             }
-            if (!isCat(entity) || !(entity instanceof LivingEntity cat) || !cat.isAlive()) {
+            Entity entity = level.getEntity(entry.getKey());
+            if (entity == null || !isCat(entity) || !(entity instanceof LivingEntity cat) || !cat.isAlive()) {
                 it.remove();
                 WARNED_CATS.remove(entry.getKey());
                 SUPERNOVA_POWER.remove(entry.getKey());
+                SUPERNOVA_LEVEL.remove(entry.getKey());
                 continue;
             }
             int left = entry.getValue();
@@ -159,6 +168,7 @@ public final class ExplodingAnimals {
                 cat.discard();
                 it.remove();
                 SUPERNOVA_POWER.remove(entry.getKey());
+                SUPERNOVA_LEVEL.remove(entry.getKey());
             } else {
                 entry.setValue(Math.max(0, left - elapsed));
             }
@@ -221,9 +231,11 @@ public final class ExplodingAnimals {
         }
         ServerScheduler.schedule(100, () -> {
             Entity summoned = onGalacticCatDeath(level, x, y, z);
-            Texts.broadcast(server, Component.literal("Un gato galáctico ha invocado un(a) ").withStyle(ChatFormatting.YELLOW)
-                    .append(summoned.getDisplayName().copy().withStyle(ChatFormatting.RED, ChatFormatting.BOLD))
-                    .append(Component.literal(" (" + coords + ")").withStyle(ChatFormatting.GRAY)));
+            if (summoned != null) {
+                Texts.broadcast(server, Component.literal("Un gato galáctico ha invocado un(a) ").withStyle(ChatFormatting.YELLOW)
+                        .append(summoned.getDisplayName().copy().withStyle(ChatFormatting.RED, ChatFormatting.BOLD))
+                        .append(Component.literal(" (" + coords + ")").withStyle(ChatFormatting.GRAY)));
+            }
         });
     }
 
