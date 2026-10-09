@@ -37,6 +37,24 @@ public final class TimeFormat {
         return days + " días MC + " + rest + " ticks (~" + realDuration(Duration.ofMillis(ticks * 50L)) + " a 20 TPS)";
     }
 
+    /**
+     * Compact Spanish-friendly duration: "4h 00m", "2h 45m", "8m 20s", "45s" (never negative). Hours show minutes,
+     * minutes show seconds.
+     */
+    public static String compact(long millis) {
+        long totalSeconds = Math.max(0L, millis) / 1000L;
+        long hours = totalSeconds / 3600L;
+        long minutes = (totalSeconds % 3600L) / 60L;
+        long seconds = totalSeconds % 60L;
+        if (hours > 0L) {
+            return String.format("%dh %02dm", hours, minutes);
+        }
+        if (minutes > 0L) {
+            return String.format("%dm %02ds", minutes, seconds);
+        }
+        return seconds + "s";
+    }
+
     /** "HH:MM:SS" countdown. */
     public static String hms(long millis) {
         long totalSeconds = Math.max(0L, millis) / 1000L;

@@ -7,12 +7,16 @@ import com.serthekiller.permadeath.core.ProgressionClock;
 import com.serthekiller.permadeath.core.ProgressionMode;
 import com.serthekiller.permadeath.core.ProgressionState;
 import com.serthekiller.permadeath.core.RealTimeProgressionClock;
+import com.serthekiller.permadeath.core.time.EventClock;
+import com.serthekiller.permadeath.core.time.PermadeathTimings;
+import com.serthekiller.permadeath.core.time.TimerMigration;
 import com.serthekiller.permadeath.data.LegacyMigration;
 import com.serthekiller.permadeath.data.PermadeathData;
 import net.minecraft.server.MinecraftServer;
 import org.jetbrains.annotations.Nullable;
 
 import java.time.Clock;
+import java.util.List;
 
 /**
  * Runtime facade: the single place where mechanics ask "which Permadeath day is it?". It owns the
@@ -26,6 +30,7 @@ public final class Permadeath {
     private static PermadeathData data;
     @Nullable
     private static volatile ProgressionClock clock;
+    private static final EventClock EVENT_CLOCK = EventClock.system();
     /** Time source of REAL30 (replaceable by GameTests / debug only). */
     private static Clock wallClock = Clock.systemUTC();
 
@@ -38,6 +43,12 @@ public final class Permadeath {
         data = PermadeathData.get(s);
         ProgressionState state = data.state();
         LegacyMigration.migrateIfNeeded(s, state, mode);
+        if (state.formatVersion < ProgressionState.CURRENT_FORMAT_VERSION) {
+            int from = state.formatVersion;
+            List<String> converted = TimerMigration.migrate(state, timings(), wallClock.millis());
+            PermadeathMod.LOGGER.info("[Permadeath] Progression data migrated from format {} to {} ({} profile): {}", from,
+                    ProgressionState.CURRENT_FORMAT_VERSION, mode, converted.isEmpty() ? "no running timer" : String.join("; ", converted));
+        }
         if (mode == ProgressionMode.GAME60) {
             GameDayProgressionClock c = new GameDayProgressionClock(state, () -> s.overworld().getDayTime(),
                     msg -> PermadeathMod.LOGGER.warn("[Permadeath] {}", msg));
@@ -45,7 +56,7 @@ public final class Permadeath {
             clock = c;
         } else {
             RealTimeProgressionClock c = new RealTimeProgressionClock(state, wallClock,
-                    msg -> PermadeathMod.LOGGER.warn("[Permadeath] {}", msg));
+                    msg -> PermadeathMod.LOGGER.warn("[Permadeath] {}", msg), PermadeathConfig::strictCampaign);
             c.initialize();
             clock = c;
         }
@@ -56,6 +67,17 @@ public final class Permadeath {
         server = null;
         data = null;
         clock = null;
+        EVENT_CLOCK.reset();
+    }
+
+    /** Progression timers of this build (GAME60 or REAL30). */
+    public static PermadeathTimings timings() {
+        return PermadeathTimings.forMode(BuildProfile.mode());
+    }
+
+    /** Real time since the previous server tick (monotonic, capped), shared by every active-time timer. */
+    public static EventClock eventClock() {
+        return EVENT_CLOCK;
     }
 
     public static boolean isRunning() {

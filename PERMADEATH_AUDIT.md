@@ -26,9 +26,9 @@ Leyenda: ✔ igual que Fabric · ✚ corrección · ≈ diferencia menor documen
 | Ceguera por lluvia 1/5000 desde el D50, sin hueco en el D60 | D40-49 1/10000, D50-59 1/7500, **D60 nada**, >60 1/5000 | D40-49 1/10000, **D50+ 1/5000** (Death Train, Overworld, lloviendo y a cielo abierto, Ceguera 60 s) | `DayRules.rainBlindnessOneIn`, `WorldRules` | `RulesTest` (D39…D60) |
 | D60 es el final | Existían D60-69 y D70 | El calendario se detiene en el D60 y no hay contenido de D61+ | `PermadeathCalendar.FINAL_DAY` | Tests de calendario (D60 a las 720 h y a las 1000 h) y GameTest `calendarNeverGoesBeyondD60` |
 | Bacalao de la muerte: Sharpness 50 / Knockback 100 | 59 de daño fijos + velocidad bruta 50, ignorando la resistencia al empuje | Golpe calculado con un arma virtual Sharpness L / Knockback C a través de `EnchantmentHelper` (respeta armadura y resistencia al empuje) | `HostileMobConverter` (D50+) | — |
-| Death Train en horas reales con marcas absolutas | Ticks restantes (dependía de los TPS, se paraba con el servidor apagado y se descontaba una vez por dimensión y tick) | `fin = max(ahora, fin) + duración`, en epoch ms dentro de `SavedData`. Duraciones de PermaDeathCore | `DeathTrain`, `DayRules.deathTrainDurationMillis` | `RulesTest` (duraciones D0…D60) |
-| Wither del D60 cada 60 min reales, persistente | 72000 ticks por jugador (dependía de los TPS) | ms reales por jugador presente en el Overworld; máximo 5 s por tick; guardado | `WitherSpawner` | — |
-| Life Orb | Plazo `now + 8 h` al detectar el D60 | Igual en GAME60; en REAL30 el plazo es el instante exacto del D60 + 8 h (cuenta aunque el servidor estuviera apagado). La penalización solo baja 16 de vida **máxima** y se guarda con el jugador (§5) | `LifeOrb` | GameTest `lifeOrbPenaltyLowersOnlyMaxHealthAndIsSaved` |
+| Death Train escalado por perfil, en tiempo activo | Ticks restantes (dependía de los TPS, se paraba con el servidor apagado y se descontaba una vez por dimensión y tick) | Duración histórica de PermaDeathCore escalada una vez (GAME60 `max(60 s, original/72)`, REAL30 `original/2`) y **sumada** al tiempo restante; solo corre con supervivientes elegibles conectados; restante guardado en `SavedData` (§7) | `DeathTrain`, `CampaignTimers`, `PermadeathTimings` | `PermadeathTimingsTest`, `CampaignTimersTest`, GameTests `deathTrain*`, `simultaneousDeathsAddBothStorms` |
+| Wither del D60 periódico, persistente | 72000 ticks por jugador (dependía de los TPS) | 8 min (GAME60) / 30 min (REAL30) de presencia real por jugador elegible en el Overworld; sin ráfagas; contador por UUID guardado; se reinicia solo cuando el Wither existe (§7) | `WitherSpawner` | GameTest `witherCounterIsPerPlayerAndOnlyRunsForEligiblePlayers` |
+| Life Orb | Plazo `now + 8 h` al detectar el D60 | 20 min (GAME60) / 4 h (REAL30) de tiempo activo desde el inicio del desafío final; un servidor apagado al llegar el D60 recibe el plazo completo. La penalización solo baja 16 de vida **máxima** y se guarda con el jugador (§5, §7) | `LifeOrb`, `FinalChallengeManager` | GameTests `lifeOrbPenaltyLowersOnlyMaxHealthAndIsSaved`, `lifeOrbDeadlineWithoutOrbPenalizesAfterTheSyncGrace`, `finalChallengeVictoryTimeline` |
 
 ## 2. Auditoría por fase
 
@@ -149,7 +149,7 @@ Leyenda: ✔ igual que Fabric · ✚ corrección · ≈ diferencia menor documen
 * ✔ Recetas desde el D50: los minerales se funden en pepitas. ✚ `iron_ingot_from_blasting_deepslate_iron_ore`
   era una copia de la receta de oro crudo en horno; ahora es pizarra profunda con hierro → pepita de hierro
   en alto horno.
-* ✔ Maldición de The Beginning (`/permadeath maldicion`, 12 h, la leche mata). Medalla de superviviente
+* ✔ Maldición de The Beginning (`/permadeath maldicion`, 10 min GAME60 / 6 h REAL30 del tiempo del jugador, la leche mata; ✚ Lentitud y Debilidad sincronizadas con la prohibición, §7). Medalla de superviviente
   desde el D55.
 * ✚ Blazes con 200 de vida máxima desde el D50, como en el plugin. Fabric ponía `setHealth(200)` sobre 20 de
   máximo (se quedaba en 20) y solo en los que venían de murciélagos.
@@ -165,7 +165,8 @@ Leyenda: ✔ igual que Fabric · ✚ corrección · ≈ diferencia menor documen
 * ✔ Cofres de estructuras vanilla vacíos desde el D60 mediante un loot modifier global (tablas
   `minecraft:chests/*`). ✚ Los cofres de The Beginning conservan su loot: Fabric también los vaciaba, así que
   todos los que se abrían a partir del D60 salían vacíos para siempre (el plugin no tiene esta regla) (§6).
-* ✔ Life Orb (8 h, después −16 de vida máxima para quien no lo tenga), Wither cada 60 min reales,
+* ✔ Life Orb (✚ 20 min / 4 h, después −16 de vida máxima para quien no lo tenga), Wither periódico (✚ 8 min / 30 min),
+  ✚ desafío final del D60 con victoria o derrota por jugador (§7),
   ahogamiento ×10 (✚ golpes de 10), 7 % de fallo de tótems con 3 tótems, Wither que ignora escudos, minar sin
   netherita quita 16. ✚ Perlas: 6 s de espera al caer. ✚ Cambio de Mikecrack activo por defecto (§5).
 * ✖ Contenido D61-69 y D70 (bolas de nieve de 50 de daño, módulo de muerte D75, logro de 70 días): fuera de
@@ -284,7 +285,7 @@ servidor dedicado (`tools/server-smoke-test.sh`), incluida la persistencia del D
   haya tormenta. Parece una comprobación olvidada en un método llamado "death train"; solo se aplican durante
   la tormenta.
 * **Wither del D60**: el plugin cuenta iteraciones de su bucle (90 min reales en la 1.3, 60 en PermaDeathCore).
-  Se mantienen los 60 min reales obligatorios.
+  Desde el sistema temporal definitivo (§7) el intervalo lo fija el perfil: 8 min (GAME60) y 30 min (REAL30).
 * **GIGA Slime/MagmaCube y lluvia de mobs del Nether**: los números del plugin dependen de la vida del mob
   antes de cambiar su tamaño y de su bucle de 1,5 s; se conservan los de Fabric.
 
@@ -337,4 +338,35 @@ ciudad Ytic más cercana sin abrirlos.
 | Migración de Fabric | Un fichero legacy dañado cortaba la lectura de todos los siguientes (Life Orb, Mikecrack, manzanas) y el mundo quedaba marcado como migrado | Cada fichero se lee por separado | — |
 | Traducción de Chile | El fichero se llamaba `es_CHL.json` (heredado de Fabric); Minecraft busca `es_cl.json`, así que con "Español (Chile)" los nombres salían en inglés | Renombrado a `es_cl.json` | — |
 | Estado de otro mundo | Al cambiar de mundo en un jugador, los manejadores de fase conservaban su estado de sueño y la caché del arma del bacalao retenía los registros del mundo anterior | Se limpian al parar el servidor | — |
+
+## 7. Sistema temporal definitivo y desafío final (2026-10-09)
+
+Auditoría de todos los temporizadores antes del cambio:
+
+| Temporizador | Antes | Problema | Ahora |
+|---|---|---|---|
+| Death Train | Fin absoluto en epoch ms, duración histórica completa en los dos perfiles | Corría con el servidor apagado o vacío; en GAME60 una tormenta del D40 (16 h) duraba más que varios días de partida | Tiempo activo restante, escalado por perfil una sola vez |
+| Life Orb | Plazo absoluto de 8 h; en REAL30 anclado al instante teórico del D60 | Un servidor REAL30 que llegaba al D60 apagado podía arrancar con el plazo vencido | 20 min / 4 h de tiempo activo desde el inicio del desafío final |
+| Wither del D60 | 60 min reales por jugador, 5 s máximo por tick | Fijo para los dos perfiles | 8 min / 30 min, sin ráfagas, reinicio solo con el Wither en el mundo |
+| X2 Shulker Shells | Fin absoluto de 4 h | Corría con el servidor apagado | 10 min / 2 h de tiempo activo |
+| Maldición de The Beginning | `Until` absoluto (12 h) + efectos de 864 000 ticks | La prohibición y los efectos iban con relojes distintos (TPS, reconexiones) | 10 min / 6 h del tiempo del jugador, efectos sincronizados cada segundo |
+| Bendición de The Beginning | Efecto de 864 000 ticks | Dependía de los TPS | 10 min / 6 h del tiempo del jugador, sincronizada |
+| Fase final | No existía | El D60 no terminaba nunca | Desafío final con estados, evaluación y resultado persistente |
+
+Temporizadores tácticos revisados y **no** modificados: mecha de la Supernova, cooldowns de perlas y tótems,
+fases y ataques del dragón, efectos cortos de pociones, Mikecrack, mecánicas vanilla. El logro de 70 días
+(45 h) sigue inactivo.
+
+Decisiones tomadas sin preguntar (las fuentes históricas no las fijan):
+
+* El plazo de la Life Orb empieza con el desafío final (primer superviviente elegible en el D60) y no en el
+  instante teórico del D60, para que un servidor apagado no pierda el plazo.
+* El desafío final y los temporizadores globales se pausan sin supervivientes elegibles; los individuales
+  (Wither, maldición, bendición) solo corren para el jugador conectado.
+* Tras el desafío final, `freezeAfterCampaign=true` detiene los Withers periódicos; el resto de reglas del D60 y
+  el mundo siguen como estaban.
+* La espera de sincronización de la penalización de la Life Orb sigue en 60 ticks (no en milisegundos): solo
+  protege la carga del inventario y así es determinista también cuando el servidor recupera ticks atrasados.
+* El modo experimental de "muertes simuladas" del Death Train para partidas en solitario (opcional en la
+  especificación) no se implementa: GAME60 no inventa muertes.
 

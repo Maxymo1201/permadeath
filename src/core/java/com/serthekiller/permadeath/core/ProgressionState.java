@@ -1,6 +1,7 @@
 package com.serthekiller.permadeath.core;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.TreeSet;
 import java.util.UUID;
@@ -11,7 +12,8 @@ import java.util.UUID;
  * dirty whenever {@link #markChanged()} is called.
  */
 public final class ProgressionState {
-    public static final int CURRENT_FORMAT_VERSION = 1;
+    /** 1 = absolute wall-clock timers; 2 = remaining active time + final challenge. */
+    public static final int CURRENT_FORMAT_VERSION = 2;
 
     public int formatVersion = CURRENT_FORMAT_VERSION;
     /** Calendar that last wrote this state (used to detect a world moved between GAME60/REAL30 jars). */
@@ -34,27 +36,51 @@ public final class ProgressionState {
     /** Milestones whose one-shot side effects have already been executed. */
     public final TreeSet<Integer> executedMilestones = new TreeSet<>();
 
-    // ---- global timers (wall clock, UTC epoch millis) -----------------------------------------
-    /** End of the current Death Train storm, or 0 when none is running. */
-    public long deathTrainEndEpochMillis;
-    /** Natural regeneration was disabled by a D50+ Death Train ("modo UHC") and must be restored. */
+    // ---- campaign timers (format 2: remaining ACTIVE time in ms, see PermadeathTimings) -----------
+    // Active time only runs while the server runs and at least one eligible survivor is online; it is
+    // measured with a monotonic clock (EventClock), so lag, TPS and wall-clock jumps cannot change it.
+    /** Remaining Death Train storm, 0 when none is running. */
+    public long deathTrainRemainingMillis;
+    /** Natural regeneration was turned off by a D50+ Death Train ("modo UHC") and must be turned back on. */
     public boolean deathTrainUhcActive;
 
-    /** D60 Life Orb countdown deadline, or -1 when the countdown has not started. */
-    public long lifeOrbDeadlineEpochMillis = -1L;
-    /** The Life Orb requirement is permanently active. */
+    /** D60 Life Orb countdown, -1 when it has not started (or is over: see {@link #lifeOrbActive}). */
+    public long lifeOrbRemainingMillis = -1L;
+    /** The Life Orb requirement is permanently active (the countdown ended). */
     public boolean lifeOrbActive;
 
-    /** D60 periodic Wither: remaining real presence time (ms) per player. */
+    /** D60 periodic Wither: remaining presence time (ms) in the Overworld per player. */
     public final Map<UUID, Long> witherRemainingMillis = new HashMap<>();
+
+    /** Remaining "X2 Shulker Shells" admin event, 0 when it is not running. */
+    public long shulkerEventRemainingMillis;
+
+    // ---- D60 final challenge -------------------------------------------------------------------
+    public FinalPhaseState finalPhaseState = FinalPhaseState.NOT_STARTED;
+    /** Remaining active time of the final challenge (meaningful while ACTIVE). */
+    public long finalPhaseRemainingMillis;
+    /** UTC epoch of the start / end of the final challenge (information only), 0 = not yet. */
+    public long finalPhaseStartedEpochMillis;
+    public long finalPhaseEndedEpochMillis;
+    /** Every player that took part in the final challenge (was an eligible survivor while it ran). */
+    public final Map<UUID, FinalParticipant> finalParticipants = new LinkedHashMap<>();
+
+    // ---- format 1 values kept for the migration (see TimerMigration) ---------------------------
+    /** Format 1 absolute timestamps read from an old world; null once migrated. */
+    public transient LegacyTimers legacyTimers;
+    /** Format of the file this state was loaded from, and when/what the last migration converted. */
+    public int migratedFromVersion;
+    public long migrationEpochMillis;
+    public String migrationSummary = "";
+
+    /** Absolute timestamps (UTC epoch ms) of the format 1 timers. */
+    public record LegacyTimers(long deathTrainEndEpochMillis, long lifeOrbDeadlineEpochMillis, long shulkerEventEndEpochMillis) {
+    }
 
     /** "Cambio de Mikecrack" explicitly enabled with /permadeath mikecrack enable (or migrated from Fabric). */
     public boolean mikecrackEnabled;
     /** "Cambio de Mikecrack" explicitly disabled with /permadeath mikecrack disable (it is on by default on D60). */
     public boolean mikecrackDisabled;
-
-    /** End of the "X2 Shulker Shells" admin event (epoch ms), 0 when it is not running. */
-    public long shulkerEventEndEpochMillis;
 
     /** Hyper Golden Apple + consumed per player. */
     public final Map<UUID, Integer> hyperApplesConsumed = new HashMap<>();

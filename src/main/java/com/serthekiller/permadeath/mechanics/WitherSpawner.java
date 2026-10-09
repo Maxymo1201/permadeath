@@ -4,62 +4,103 @@ import com.serthekiller.permadeath.PermadeathMod;
 import com.serthekiller.permadeath.core.ProgressionState;
 import com.serthekiller.permadeath.core.rules.DayRules;
 import com.serthekiller.permadeath.progression.Permadeath;
+import com.serthekiller.permadeath.progression.PermadeathConfig;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.boss.wither.WitherBoss;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
 /**
- * D60: every player gets a Wither spawned on him after 60 real minutes of presence in the Overworld (Fabric:
- * 72000 server ticks, which is longer than one hour whenever the TPS drops). The remaining time of every
- * player is stored in the world and survives restarts; time only counts while the player is online in the
- * Overworld.
+ * D60 periodic Wither: every eligible survivor gets a vanilla Wither summoned on them after
+ * {@code PermadeathTimings#witherIntervalMillis} (GAME60 8 min, REAL30 30 min) of real presence in the Overworld.
+ *
+ * <ul>
+ *     <li>One independent counter per UUID, stored in the world: it survives relogs and restarts.</li>
+ *     <li>It only runs while that player is online, alive, in survival/adventure mode and in the Overworld; spectators,
+ *     creative players and eliminated players do not count, and a stopped server consumes nothing.</li>
+ *     <li>Real time from the monotonic {@code EventClock} (lag does not stretch it); a frozen server cannot summon
+ *     several Withers at once: at most one per player per tick, and the counter restarts from a full interval.</li>
+ *     <li>The counter is only reset once the Wither really joined the world; otherwise it retries.</li>
+ *     <li>After a finished final challenge the timers stop unless {@code freezeAfterCampaign = false}.</li>
+ *     <li>Optional {@code witherAccumulationLimit} (off by default) postpones a Wither while too many are nearby.</li>
+ * </ul>
  */
 public final class WitherSpawner {
-    /** Longest real gap counted between two ticks (protects against lag spikes and clock jumps). */
-    private static final long MAX_STEP_MILLIS = 5_000L;
-    private static long lastTickMillis = -1L;
-    private static long saveCounter;
+    private static final double ACCUMULATION_RADIUS = 128.0;
+    private static final Map<UUID, Long> LIMIT_LOGGED = new HashMap<>();
 
     private WitherSpawner() {
     }
 
     public static void reset() {
-        lastTickMillis = -1L;
-        saveCounter = 0;
+        LIMIT_LOGGED.clear();
     }
 
-    public static void tick(MinecraftServer server) {
-        if (!Permadeath.isRunning()) {
-            return;
-        }
-        long now = Permadeath.nowMillis();
-        long step = lastTickMillis < 0L ? 0L : Math.max(0L, Math.min(MAX_STEP_MILLIS, now - lastTickMillis));
-        lastTickMillis = now;
-        if (Permadeath.day() < DayRules.WITHER_FROM_DAY) {
+    public static boolean running() {
+        return Permadeath.isRunning() && Permadeath.day() >= DayRules.WITHER_FROM_DAY
+                && !(Permadeath.state().finalPhaseState.finished() && PermadeathConfig.freezeAfterCampaign());
+    }
+
+    /** Remaining presence time of {@code uuid} before its next Wither (a full interval if it has no counter yet). */
+    public static long remainingFor(UUID uuid) {
+        return Permadeath.state().witherRemainingMillis.getOrDefault(uuid, Permadeath.timings().witherIntervalMillis());
+    }
+
+    /** One server tick: {@code stepMillis} of real time for every eligible player in the Overworld. */
+    public static void tick(MinecraftServer server, long stepMillis) {
+        if (!running()) {
             return;
         }
         ProgressionState state = Permadeath.state();
+        long interval = Permadeath.timings().witherIntervalMillis();
         ServerLevel overworld = server.overworld();
-        boolean dirty = false;
+        boolean changed = false;
         for (ServerPlayer player : overworld.players()) {
-            if (player.isSpectator()) {
+            if (!Participants.isEligible(player)) {
                 continue;
             }
-            long remaining = state.witherRemainingMillis.getOrDefault(player.getUUID(), DayRules.WITHER_INTERVAL_MILLIS) - step;
-            if (remaining <= 0L) {
-                WitherBoss wither = new WitherBoss(EntityType.WITHER, overworld);
-                wither.moveTo(player.getX(), player.getY(), player.getZ(), player.getYRot(), player.getXRot());
-                overworld.addFreshEntity(wither);
-                PermadeathMod.LOGGER.info("[Permadeath] Wither summoned for {}", player.getScoreboardName());
-                remaining = DayRules.WITHER_INTERVAL_MILLIS;
-                dirty = true;
+            UUID uuid = player.getUUID();
+            long remaining = Math.min(state.witherRemainingMillis.getOrDefault(uuid, interval), interval);
+            remaining = Math.max(0L, remaining - Math.max(0L, stepMillis));
+            if (remaining == 0L && trySummon(overworld, player)) {
+                remaining = interval;
             }
-            state.witherRemainingMillis.put(player.getUUID(), remaining);
+            Long previous = state.witherRemainingMillis.put(uuid, remaining);
+            changed |= previous == null || previous != remaining;
         }
-        if (dirty || ++saveCounter % 400 == 0) {
+        if (changed) {
             state.markChanged();
         }
+    }
+
+    private static boolean trySummon(ServerLevel overworld, ServerPlayer player) {
+        int limit = PermadeathConfig.witherAccumulationLimit();
+        if (limit > 0) {
+            int nearby = overworld.getEntitiesOfClass(WitherBoss.class, player.getBoundingBox().inflate(ACCUMULATION_RADIUS), WitherBoss::isAlive).size();
+            if (nearby >= limit) {
+                long now = overworld.getGameTime();
+                Long logged = LIMIT_LOGGED.get(player.getUUID());
+                if (logged == null || now - logged >= 1200L) {
+                    LIMIT_LOGGED.put(player.getUUID(), now);
+                    PermadeathMod.LOGGER.info("[Permadeath] Wither of {} postponed: {} Withers nearby (witherAccumulationLimit={})",
+                            player.getScoreboardName(), nearby, limit);
+                }
+                return false;
+            }
+        }
+        WitherBoss wither = new WitherBoss(EntityType.WITHER, overworld);
+        wither.moveTo(player.getX(), player.getY(), player.getZ(), player.getYRot(), player.getXRot());
+        if (!overworld.addFreshEntity(wither)) {
+            PermadeathMod.LOGGER.warn("[Permadeath] Wither for {} could not be added; retrying", player.getScoreboardName());
+            return false;
+        }
+        LIMIT_LOGGED.remove(player.getUUID());
+        PermadeathMod.LOGGER.info("[Permadeath] Wither summoned for {}", player.getScoreboardName());
+        return true;
     }
 }

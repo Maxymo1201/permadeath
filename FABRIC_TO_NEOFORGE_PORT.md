@@ -97,10 +97,10 @@ lugar de seguir sin la funcionalidad. La única excepción es el empuje del shul
 | Fabric | NeoForge |
 |---|---|
 | `DateManager` (fecha real `dd/MM/yyyy`, días de 24 h, `speedrun`) | `ProgressionClock` con dos implementaciones fijadas por build (ver `PERMADEATH_TIME_MODES.md`). `speedrun` no se porta: el modo de calendario no se puede cambiar en caliente |
-| `PermadeathUtils` (tormenta en ticks, en memoria + fichero) | `mechanics/DeathTrain`: fin absoluto en epoch ms dentro de `SavedData` |
+| `PermadeathUtils` (tormenta en ticks, en memoria + fichero) | `mechanics/DeathTrain`: tiempo activo restante en `SavedData`, escalado por perfil (`core/time/PermadeathTimings`), solo corre con supervivientes conectados |
 | `TotemManager` (dentro de `ALLOW_DAMAGE`) | `mechanics/TotemSystem` sobre `LivingUseTotemEvent` |
-| `WitherSpawn` (72000 ticks por jugador, en fichero) | `mechanics/WitherSpawner` (60 min reales por jugador en `SavedData`) |
-| `LifeOrbManager` | `mechanics/LifeOrb` (barra de jefe, plazo absoluto) |
+| `WitherSpawn` (72000 ticks por jugador, en fichero) | `mechanics/WitherSpawner` (8 min GAME60 / 30 min REAL30 de presencia real por jugador en `SavedData`) |
+| `LifeOrbManager` | `mechanics/LifeOrb` (barra de jefe, plazo de 20 min / 4 h de tiempo activo desde el inicio del desafío final) + `mechanics/FinalChallengeManager` (desafío final del D60) |
 | `ArmorBonusHandler` | `mechanics/PlayerHealth` (modificadores con ID estable, sin acumulación) |
 | `DeathHandler` | `mechanics/DeathHandler` (mismos mensajes, sonidos, monumento y baneo) |
 | `PhaseManager` + `DayXtoYHandler` (7 clases y `Day70Handler`) | `phase/PhaseManager` + 7 handlers; D40, D50 y D60 comparten `LatePhaseHandler`. `Day70Handler` no existe (el D60 es el último día) |

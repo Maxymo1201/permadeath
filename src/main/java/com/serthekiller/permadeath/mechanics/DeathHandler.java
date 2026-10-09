@@ -118,6 +118,7 @@ public final class DeathHandler {
         });
         scheduleBan(server, player.getGameProfile());
 
+        FinalChallengeManager.onPermadeath(live != null ? live : player);
         long added = DeathTrain.trigger(server, day);
         if (DayRules.deathTrainDisablesRegeneration(day)) {
             // Plugin: announced on every D50+ death, before the Death Train message.

@@ -11,6 +11,7 @@ import com.serthekiller.permadeath.end.EndPillars;
 import com.serthekiller.permadeath.end.EnderDragonDemon;
 import com.serthekiller.permadeath.mechanics.DeathHandler;
 import com.serthekiller.permadeath.mechanics.DeathTrain;
+import com.serthekiller.permadeath.mechanics.FinalChallengeManager;
 import com.serthekiller.permadeath.mechanics.GameplayRules;
 import com.serthekiller.permadeath.mechanics.LifeOrb;
 import com.serthekiller.permadeath.mechanics.LockedSlots;
@@ -31,6 +32,7 @@ import com.serthekiller.permadeath.mobs.MobTracking;
 import com.serthekiller.permadeath.phase.PhaseCommon;
 import com.serthekiller.permadeath.phase.PhaseHandler;
 import com.serthekiller.permadeath.phase.PhaseManager;
+import com.serthekiller.permadeath.progression.CampaignTicker;
 import com.serthekiller.permadeath.progression.DayController;
 import com.serthekiller.permadeath.progression.Permadeath;
 import com.serthekiller.permadeath.recipes.CraftingCost;
@@ -181,6 +183,8 @@ public final class PermadeathEvents {
         TotemSystem.reset();
         LifeOrb.reset();
         WitherSpawner.reset();
+        DeathTrain.resetRuntime();
+        FinalChallengeManager.reset();
         ShulkerShellEvent.reset();
         WorldRules.reset();
         ExplodingAnimals.reset();
@@ -203,12 +207,9 @@ public final class PermadeathEvents {
             // The copy of a mob that changed dimension joins within the same tick: nothing older is still pending.
             GoalRestorer.reset();
             int day = Permadeath.day();
-            DeathTrain.tick(server);
-            LifeOrb.tick(server);
-            WitherSpawner.tick(server);
+            // Death Train, X2 Shulker Shells, Life Orb, D60 final challenge, periodic Wither, curse/blessing.
+            CampaignTicker.tick(server);
             Mikecrack.tick(server);
-            ShulkerShellEvent.tick(server);
-            MilkCurse.tick(server);
             BeginningEvents.onServerTick(server);
             WorldRules.onServerTick(server);
             for (ServerPlayer player : List.copyOf(server.getPlayerList().getPlayers())) {
@@ -401,6 +402,7 @@ public final class PermadeathEvents {
         if (event.getEntity() instanceof ServerPlayer player && Permadeath.isRunning()) {
             LifeOrb.onLogout(player);
             ShulkerShellEvent.removePlayer(player);
+            FinalChallengeManager.removePlayer(player);
         }
     }
 
@@ -410,6 +412,7 @@ public final class PermadeathEvents {
             if (event.getOriginal() instanceof ServerPlayer original) {
                 LifeOrb.onRespawn(original);
                 ShulkerShellEvent.removePlayer(original);
+                FinalChallengeManager.removePlayer(original);
             }
         }
     }

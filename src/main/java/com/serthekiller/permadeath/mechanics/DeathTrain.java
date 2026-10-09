@@ -4,6 +4,8 @@ import com.serthekiller.permadeath.PermadeathMod;
 import com.serthekiller.permadeath.core.ProgressionState;
 import com.serthekiller.permadeath.core.TimeFormat;
 import com.serthekiller.permadeath.core.rules.DayRules;
+import com.serthekiller.permadeath.core.time.CampaignTimers;
+import com.serthekiller.permadeath.core.time.PermadeathTimings;
 import com.serthekiller.permadeath.progression.Permadeath;
 import com.serthekiller.permadeath.util.Texts;
 import net.minecraft.ChatFormatting;
@@ -18,45 +20,38 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.level.GameRules;
 
 /**
- * Death Train (Fabric PermadeathUtils storm). Every death adds {@link DayRules#deathTrainDurationMillis} of
- * thunderstorm. The end of the storm is an absolute wall-clock timestamp stored in the world, so it does not
- * depend on TPS and keeps running while the server is stopped (Fabric counted server ticks and saved them in
- * permadeath_storm.txt).
+ * Death Train (Fabric PermadeathUtils storm). Every death adds the historical duration of {@link DayRules} scaled to
+ * the build profile ({@link PermadeathTimings#deathTrainMillis}: GAME60 / 72 with at least 60 s, REAL30 / 2) to the
+ * time that is left; several deaths add up and never restart the storm.
+ *
+ * <p>The storm is stored as remaining ACTIVE time: it only runs while the server runs and at least one eligible
+ * survivor is online ({@link Participants}), measured with a monotonic clock, so lag/TPS do not stretch it, a stopped
+ * or empty server does not consume it and a restart keeps exactly what was left.</p>
  *
  * <p>While it lasts: permanent thunderstorm in the Overworld, a timer in the action bar, D50+ no natural
- * regeneration ("modo UHC"). From D25 every death gives every mob alive Strength, Resistance and Speed (I, II
- * from D50) and, on D50-59, Fire Resistance, for the rest of its life, and mobs spawning during the storm get
- * them too (plugin deathTrainEffects, infinite duration; Fabric refreshed them only while the storm lasted).</p>
+ * regeneration ("modo UHC", restored only if this storm turned it off). From D25 every death gives every mob alive
+ * Strength, Resistance and Speed (I, II from D50) and, on D50-59, Fire Resistance, for the rest of its life, and mobs
+ * spawning during the storm get them too (plugin deathTrainEffects).</p>
  */
 public final class DeathTrain {
-    private static long tickCounter;
+    private static boolean pausedReported;
 
     private DeathTrain() {
     }
 
     public static boolean isActive() {
-        if (!Permadeath.isRunning()) {
-            return false;
-        }
-        return Permadeath.state().deathTrainEndEpochMillis > Permadeath.nowMillis();
+        return Permadeath.isRunning() && Permadeath.state().deathTrainRemainingMillis > 0L;
     }
 
     public static long remainingMillis() {
-        if (!Permadeath.isRunning()) {
-            return 0L;
-        }
-        return Math.max(0L, Permadeath.state().deathTrainEndEpochMillis - Permadeath.nowMillis());
+        return Permadeath.isRunning() ? Math.max(0L, Permadeath.state().deathTrainRemainingMillis) : 0L;
     }
 
-    /** Adds the storm of one death on {@code day}; returns the added duration. */
+    /** Adds the storm of one death on {@code day} (scaled once, to the profile); returns the added duration. */
     public static long trigger(MinecraftServer server, int day) {
         ProgressionState state = Permadeath.state();
-        long now = Permadeath.nowMillis();
-        long added = DayRules.deathTrainDurationMillis(day);
-        long base = Math.max(now, state.deathTrainEndEpochMillis);
-        state.deathTrainEndEpochMillis = base + added;
-        state.markChanged();
-        applyWeather(server.overworld(), state.deathTrainEndEpochMillis - now);
+        long added = CampaignTimers.addDeathTrain(state, Permadeath.timings(), day);
+        applyWeather(server.overworld(), state.deathTrainRemainingMillis);
         if (DayRules.deathTrainBuffAmplifier(day) >= 0) {
             for (ServerLevel level : server.getAllLevels()) {
                 for (Entity entity : level.getAllEntities()) {
@@ -66,28 +61,27 @@ public final class DeathTrain {
                 }
             }
         }
-        PermadeathMod.LOGGER.info("[Permadeath] Death Train +{} (day {}), ends at {}", TimeFormat.realDuration(java.time.Duration.ofMillis(added)), day,
-                TimeFormat.utc(java.time.Instant.ofEpochMilli(state.deathTrainEndEpochMillis)));
+        PermadeathMod.LOGGER.info("[Permadeath] Death Train +{} (day {}, {}), {} left", TimeFormat.compact(added), day, Permadeath.mode(),
+                TimeFormat.compact(state.deathTrainRemainingMillis));
         return added;
     }
 
     private static void applyWeather(ServerLevel overworld, long remainingMillis) {
-        int ticks = (int) Math.min(Integer.MAX_VALUE, Math.max(1L, remainingMillis / 50L));
+        int ticks = (int) Math.min(Integer.MAX_VALUE, Math.max(20L, remainingMillis / 50L));
         overworld.setWeatherParameters(0, ticks, true, true);
     }
 
-    public static void tick(MinecraftServer server) {
+    /**
+     * Storm state of one server tick (weather, UHC rule, action bar). The time itself is advanced by
+     * {@link CampaignTimers#advance} in {@link CampaignTicker}; {@code ended} is its "storm finished" transition.
+     */
+    public static void tick(MinecraftServer server, boolean ended, boolean anyEligible) {
         if (!Permadeath.isRunning()) {
             return;
         }
-        tickCounter++;
         ProgressionState state = Permadeath.state();
-        long end = state.deathTrainEndEpochMillis;
-        if (end <= 0L) {
-            return;
-        }
-        long remaining = end - Permadeath.nowMillis();
         int day = Permadeath.day();
+        long remaining = state.deathTrainRemainingMillis;
         if (remaining > 0L) {
             ServerLevel overworld = server.overworld();
             if (!overworld.isRaining() || !overworld.isThundering()) {
@@ -105,24 +99,44 @@ public final class DeathTrain {
                 state.deathTrainUhcActive = false;
                 state.markChanged();
             }
-            if (tickCounter % 20L == 0L) {
-                Component timer = Component.literal("Quedan: " + TimeFormat.hms(remaining) + " de tormenta").withStyle(ChatFormatting.GRAY);
+            if (server.getTickCount() % 20 == 0) {
+                Component timer = Component.literal("Quedan: " + TimeFormat.compact(remaining) + " de tormenta"
+                        + (anyEligible ? "" : " (en pausa: ningún superviviente conectado)")).withStyle(ChatFormatting.GRAY);
                 for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                     player.displayClientMessage(timer, true);
                 }
             }
+            if (!anyEligible && !pausedReported) {
+                pausedReported = true;
+                PermadeathMod.LOGGER.info("[Permadeath] Death Train paused ({} left): no eligible survivor online", TimeFormat.compact(remaining));
+            } else if (anyEligible) {
+                pausedReported = false;
+            }
             return;
         }
-        // Storm finished (possibly while the server was stopped).
-        state.deathTrainEndEpochMillis = 0L;
-        server.overworld().setWeatherParameters(6000, 0, false, false);
+        if (ended) {
+            finish(server, true);
+        } else if (state.deathTrainUhcActive) {
+            // A storm that ended earlier (e.g. while migrating an old world): only restore what it changed.
+            finish(server, false);
+        }
+    }
+
+    private static void finish(MinecraftServer server, boolean announce) {
+        ProgressionState state = Permadeath.state();
+        state.deathTrainRemainingMillis = 0L;
+        if (announce) {
+            server.overworld().setWeatherParameters(6000, 0, false, false);
+        }
         if (state.deathTrainUhcActive) {
             setNaturalRegeneration(server, true);
             state.deathTrainUhcActive = false;
         }
         state.markChanged();
-        Texts.broadcast(server, Component.literal("La Tormenta ha finalizado...").withStyle(ChatFormatting.GRAY, ChatFormatting.BOLD));
-        PermadeathMod.LOGGER.info("[Permadeath] Death Train finished");
+        if (announce) {
+            Texts.broadcast(server, Component.literal("La Tormenta ha finalizado...").withStyle(ChatFormatting.GRAY, ChatFormatting.BOLD));
+            PermadeathMod.LOGGER.info("[Permadeath] Death Train finished");
+        }
     }
 
     /** Permanent Death Train buffs of one mob (plugin deathTrainEffects): nothing before D25. */
@@ -139,25 +153,20 @@ public final class DeathTrain {
         }
     }
 
-    /** /permadeath storm addHours: extends the running storm or starts one. */
+    /** /permadeath storm add...: effective real time chosen by an administrator (never scaled to the profile). */
     public static void addMillis(MinecraftServer server, long millis) {
         ProgressionState state = Permadeath.state();
-        long now = Permadeath.nowMillis();
-        state.deathTrainEndEpochMillis = Math.max(now, state.deathTrainEndEpochMillis) + millis;
-        state.markChanged();
-        applyWeather(server.overworld(), state.deathTrainEndEpochMillis - now);
+        CampaignTimers.addDeathTrainRaw(state, millis);
+        applyWeather(server.overworld(), state.deathTrainRemainingMillis);
     }
 
-    /** /permadeath storm removeHours: shortens the running storm (it lasts at least 1 more second). */
+    /** /permadeath storm remove...: shortens the running storm (it lasts at least 1 more second). */
     public static boolean removeMillis(MinecraftServer server, long millis) {
-        if (!isActive()) {
+        ProgressionState state = Permadeath.state();
+        if (!CampaignTimers.removeDeathTrainRaw(state, millis)) {
             return false;
         }
-        ProgressionState state = Permadeath.state();
-        long now = Permadeath.nowMillis();
-        state.deathTrainEndEpochMillis = Math.max(now + 1000L, state.deathTrainEndEpochMillis - millis);
-        state.markChanged();
-        applyWeather(server.overworld(), state.deathTrainEndEpochMillis - now);
+        applyWeather(server.overworld(), state.deathTrainRemainingMillis);
         return true;
     }
 
@@ -165,7 +174,7 @@ public final class DeathTrain {
     public static void reset(MinecraftServer server) {
         ProgressionState state = Permadeath.state();
         boolean uhc = state.deathTrainUhcActive;
-        state.deathTrainEndEpochMillis = 0L;
+        state.deathTrainRemainingMillis = 0L;
         state.deathTrainUhcActive = false;
         state.markChanged();
         if (uhc) {
@@ -176,19 +185,16 @@ public final class DeathTrain {
         PermadeathMod.LOGGER.info("[Permadeath] Death Train reset manually");
     }
 
+    public static void resetRuntime() {
+        pausedReported = false;
+    }
+
     private static void setNaturalRegeneration(MinecraftServer server, boolean enabled) {
         server.getGameRules().getRule(GameRules.RULE_NATURAL_REGENERATION).set(enabled, server);
     }
 
-    /** Spanish duration text of the death message ("2 horas", "1h 30 minutos"). */
+    /** Duration of the death message: "8m 20s", "4h 00m", "2h 45m". */
     public static String durationText(long millis) {
-        long totalMinutes = millis / 60_000L;
-        if (totalMinutes % 60L == 0L) {
-            long hours = totalMinutes / 60L;
-            return hours + " hora" + (hours == 1L ? "" : "s");
-        }
-        long h = totalMinutes / 60L;
-        long m = totalMinutes % 60L;
-        return (h > 0L ? h + "h " : "") + m + " minutos";
+        return TimeFormat.compact(millis);
     }
 }

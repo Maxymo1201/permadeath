@@ -464,7 +464,7 @@ public final class GameplayRules {
         float chance = d < 40 ? (d == 35 ? 0.4F : 0.2F) : 0.02F;
         if (shulker.getRandom().nextFloat() < chance) {
             ItemEntity shell = new ItemEntity(level, shulker.getX(), shulker.getY(), shulker.getZ(),
-                    new ItemStack(Items.SHULKER_SHELL, ShulkerShellEvent.isActive() ? 2 : 1));
+                    new ItemStack(Items.SHULKER_SHELL, ShulkerShellEvent.shellsPerDrop()));
             shell.setInvulnerable(true);
             shell.setPickUpDelay(85);
             level.addFreshEntity(shell);

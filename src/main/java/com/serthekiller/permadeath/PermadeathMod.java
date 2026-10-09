@@ -3,8 +3,9 @@ package com.serthekiller.permadeath;
 import com.mojang.logging.LogUtils;
 import com.serthekiller.permadeath.event.PermadeathEvents;
 import com.serthekiller.permadeath.items.NetheriteTools;
-import com.serthekiller.permadeath.mobs.BeginningMobs;
 import com.serthekiller.permadeath.loot.D60LootModifier;
+import com.serthekiller.permadeath.mobs.BeginningMobs;
+import com.serthekiller.permadeath.progression.PermadeathConfig;
 import com.serthekiller.permadeath.recipes.PermadeathRecipes;
 import com.serthekiller.permadeath.registry.DayConditions;
 import com.serthekiller.permadeath.registry.ModArmorMaterials;
@@ -14,7 +15,9 @@ import com.serthekiller.permadeath.registry.ModItems;
 import com.serthekiller.permadeath.registry.ModSounds;
 import com.serthekiller.permadeath.worldgen.ModWorldgen;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.config.ModConfig;
 import net.neoforged.neoforge.common.NeoForge;
 import org.slf4j.Logger;
 
@@ -27,7 +30,7 @@ public final class PermadeathMod {
     public static final String MOD_ID = "permadeath";
     public static final Logger LOGGER = LogUtils.getLogger();
 
-    public PermadeathMod(IEventBus modBus) {
+    public PermadeathMod(IEventBus modBus, ModContainer container) {
         LOGGER.info("[Permadeath] Loading Permadeath {} (calendar {})", java.util.Objects.requireNonNullElse(PermadeathMod.class.getPackage().getImplementationVersion(), "dev"),
                 BuildProfile.mode());
         ModArmorMaterials.ARMOR_MATERIALS.register(modBus);
@@ -41,6 +44,7 @@ public final class PermadeathMod {
         modBus.addListener(ModCreativeTabs::onBuildContents);
         modBus.addListener(NetheriteTools::onModifyDefaultComponents);
         modBus.addListener(BeginningMobs::onRegisterSpawnPlacements);
+        container.registerConfig(ModConfig.Type.SERVER, PermadeathConfig.SPEC);
         PermadeathEvents.register(NeoForge.EVENT_BUS);
     }
 }

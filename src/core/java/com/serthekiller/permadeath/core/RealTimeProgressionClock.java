@@ -1,9 +1,12 @@
 package com.serthekiller.permadeath.core;
 
+import com.serthekiller.permadeath.core.time.PermadeathTimings;
+
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.OptionalInt;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 /**
@@ -16,6 +19,8 @@ import java.util.function.Consumer;
  *     <li>Based on UTC epoch millis only: time zones, DST or the host's local time cannot change it.</li>
  *     <li>Time keeps running while the server is stopped; TPS/lag have no influence.</li>
  *     <li>The time source is injectable ({@link Clock}) so the 30 days can be tested instantly.</li>
+ *     <li>Optional strict campaign ({@code strictCampaignDuration}): D60 starts 6 h early (hour 714) so that the 6 h
+ *     final challenge ends exactly at hour 720. The earlier milestones do not move.</li>
  * </ul>
  */
 public final class RealTimeProgressionClock implements ProgressionClock {
@@ -27,14 +32,42 @@ public final class RealTimeProgressionClock implements ProgressionClock {
     private final ProgressionState state;
     private final Clock clock;
     private final Consumer<String> warnLog;
+    private final BooleanSupplier strictCampaign;
     private long lastPersistedElapsed = Long.MIN_VALUE;
     private boolean regressionReported;
 
     public RealTimeProgressionClock(ProgressionState state, Clock clock, Consumer<String> warnLog) {
+        this(state, clock, warnLog, () -> false);
+    }
+
+    public RealTimeProgressionClock(ProgressionState state, Clock clock, Consumer<String> warnLog, BooleanSupplier strictCampaign) {
         this.state = state;
         this.clock = clock;
         this.warnLog = warnLog == null ? s -> {
         } : warnLog;
+        this.strictCampaign = strictCampaign == null ? () -> false : strictCampaign;
+    }
+
+    public boolean strictCampaign() {
+        return strictCampaign.getAsBoolean();
+    }
+
+    /** Calendar time at which {@code day} begins (D60 at hour 714 in the strict campaign). */
+    public long dayStartElapsedMillis(int day) {
+        int d = PermadeathCalendar.clampDay(day);
+        if (d == PermadeathCalendar.FINAL_DAY && strictCampaign()) {
+            return PermadeathTimings.REAL30.strictFinalDayElapsedMillis();
+        }
+        return d * PermadeathCalendar.REAL30_MILLIS_PER_DAY;
+    }
+
+    private int dayFor(long elapsedMillis) {
+        int day = dayForElapsed(elapsedMillis);
+        if (day < PermadeathCalendar.FINAL_DAY && strictCampaign()
+                && elapsedMillis >= PermadeathTimings.REAL30.strictFinalDayElapsedMillis()) {
+            return PermadeathCalendar.FINAL_DAY;
+        }
+        return day;
     }
 
     public void initialize() {
@@ -70,11 +103,11 @@ public final class RealTimeProgressionClock implements ProgressionClock {
     }
 
     public Instant finalDayInstant() {
-        return Instant.ofEpochMilli(state.startEpochMillis + PermadeathCalendar.REAL30_FINAL_ELAPSED_MILLIS);
+        return Instant.ofEpochMilli(state.startEpochMillis + dayStartElapsedMillis(PermadeathCalendar.FINAL_DAY));
     }
 
     public Instant dayInstant(int day) {
-        return Instant.ofEpochMilli(state.startEpochMillis + PermadeathCalendar.clampDay(day) * PermadeathCalendar.REAL30_MILLIS_PER_DAY);
+        return Instant.ofEpochMilli(state.startEpochMillis + dayStartElapsedMillis(day));
     }
 
     /** Effective elapsed wall-clock time (monotonic). */
@@ -105,7 +138,7 @@ public final class RealTimeProgressionClock implements ProgressionClock {
         if (getDay() >= day) {
             return Duration.ZERO;
         }
-        long target = PermadeathCalendar.clampDay(day) * PermadeathCalendar.REAL30_MILLIS_PER_DAY;
+        long target = dayStartElapsedMillis(day);
         return Duration.ofMillis(Math.max(0L, target - effectiveElapsedMillis()));
     }
 
@@ -132,7 +165,7 @@ public final class RealTimeProgressionClock implements ProgressionClock {
             }
         }
         int previous = getDay();
-        int day = Math.max(dayForElapsed(effective), previous);
+        int day = Math.max(dayFor(effective), previous);
         if (day != state.maxEffectiveDay) {
             state.maxEffectiveDay = day;
             dirty = true;
@@ -148,8 +181,8 @@ public final class RealTimeProgressionClock implements ProgressionClock {
     public void setDay(int day) {
         int target = PermadeathCalendar.clampDay(day);
         long now = clock.millis();
-        state.startEpochMillis = now - target * PermadeathCalendar.REAL30_MILLIS_PER_DAY;
-        state.maxElapsedMillis = target * PermadeathCalendar.REAL30_MILLIS_PER_DAY;
+        state.startEpochMillis = now - dayStartElapsedMillis(target);
+        state.maxElapsedMillis = dayStartElapsedMillis(target);
         state.maxEffectiveDay = target;
         state.executedMilestones.removeIf(m -> m > target);
         lastPersistedElapsed = state.maxElapsedMillis;
@@ -161,7 +194,9 @@ public final class RealTimeProgressionClock implements ProgressionClock {
     public String describe() {
         int day = getDay();
         StringBuilder sb = new StringBuilder();
-        sb.append("Calendario: REAL30 (1 día Permadeath = 12 h reales; D60 = 720 h)\n");
+        sb.append(strictCampaign()
+                ? "Calendario: REAL30 estricto (1 día Permadeath = 12 h reales; D60 = 714 h y la final termina a las 720 h)\n"
+                : "Calendario: REAL30 (1 día Permadeath = 12 h reales; D60 = 720 h, más 6 h efectivas de desafío final)\n");
         sb.append("Inicio (UTC): ").append(TimeFormat.utc(startInstant())).append('\n');
         sb.append("Tiempo real transcurrido: ").append(TimeFormat.realDuration(getElapsed())).append('\n');
         sb.append("Día Permadeath: ").append(day).append('/').append(PermadeathCalendar.FINAL_DAY).append('\n');

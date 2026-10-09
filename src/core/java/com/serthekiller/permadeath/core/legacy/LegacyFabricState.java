@@ -3,6 +3,7 @@ package com.serthekiller.permadeath.core.legacy;
 import com.serthekiller.permadeath.core.PermadeathCalendar;
 import com.serthekiller.permadeath.core.ProgressionMode;
 import com.serthekiller.permadeath.core.ProgressionState;
+import com.serthekiller.permadeath.core.time.PermadeathTimings;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -125,15 +126,24 @@ public final class LegacyFabricState {
             }
         }
         if (Boolean.TRUE.equals(stormActive) && stormTicksRemaining != null && stormTicksRemaining > 0) {
-            // Fabric counted the storm in server ticks (paused while offline); convert at nominal 20 tps.
-            state.deathTrainEndEpochMillis = nowEpochMillis + stormTicksRemaining * 50L;
+            // Fabric counted the storm in server ticks (paused while offline), like the active time of format 2:
+            // the remaining time is kept as it was (nominal 20 tps), without applying the profile factor again.
+            state.deathTrainRemainingMillis = stormTicksRemaining * 50L;
         }
         witherTicks.forEach((uuid, ticks) -> state.witherRemainingMillis.put(uuid, Math.max(0L, ticks) * 50L));
         if (lifeOrbActive != null) {
             state.lifeOrbActive = lifeOrbActive;
         }
-        if (lifeOrbExpiration != null) {
-            state.lifeOrbDeadlineEpochMillis = lifeOrbExpiration;
+        if (lifeOrbExpiration != null && lifeOrbExpiration > 0L && !state.lifeOrbActive) {
+            // Fabric stored an absolute deadline: an expired one stays expired, a running one keeps its observable
+            // time (at most the countdown of the profile).
+            long left = lifeOrbExpiration - nowEpochMillis;
+            if (left <= 0L) {
+                state.lifeOrbActive = true;
+                state.lifeOrbRemainingMillis = -1L;
+            } else {
+                state.lifeOrbRemainingMillis = Math.min(left, PermadeathTimings.forMode(mode).lifeOrbCountdownMillis());
+            }
         }
         if (mikecrack != null) {
             state.mikecrackEnabled = mikecrack;

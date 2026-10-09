@@ -173,4 +173,31 @@ class RealTimeProgressionClockTest {
         assertEquals(ProgressionMode.REAL30, state.mode);
         assertFalse(warnings.isEmpty());
     }
+
+    @Test
+    void strictCampaignMovesOnlyD60ToHour714() {
+        ProgressionState state = new ProgressionState();
+        MutableClock clock = new MutableClock(T0, java.time.ZoneOffset.UTC);
+        RealTimeProgressionClock c = new RealTimeProgressionClock(state, clock, s -> { }, () -> true);
+        c.initialize();
+        clock.set(T0.plus(Duration.ofHours(600)));
+        c.update();
+        assertEquals(50, c.getDay(), "earlier milestones do not move");
+        clock.set(T0.plus(Duration.ofHours(713)).plusSeconds(3599));
+        c.update();
+        assertEquals(59, c.getDay());
+        assertEquals(Duration.ofSeconds(1), c.timeUntilDay(60));
+        clock.set(T0.plus(Duration.ofHours(714)));
+        c.update();
+        assertEquals(60, c.getDay(), "D60 at hour 714 in the strict campaign");
+        assertEquals(T0.plus(Duration.ofHours(714)), c.finalDayInstant());
+
+        ProgressionState normalState = new ProgressionState();
+        MutableClock normalClock = new MutableClock(T0, java.time.ZoneOffset.UTC);
+        RealTimeProgressionClock normal = new RealTimeProgressionClock(normalState, normalClock, s -> { });
+        normal.initialize();
+        normalClock.set(T0.plus(Duration.ofHours(719)));
+        normal.update();
+        assertEquals(59, normal.getDay(), "by default D60 stays at hour 720");
+    }
 }

@@ -7,11 +7,16 @@ import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.serthekiller.permadeath.PermadeathMod;
 import com.serthekiller.permadeath.beginning.BeginningDimension;
+import com.serthekiller.permadeath.beginning.BeginningEffects;
 import com.serthekiller.permadeath.beginning.BeginningEvents;
+import com.serthekiller.permadeath.core.FinalParticipant;
+import com.serthekiller.permadeath.core.FinalPhaseState;
 import com.serthekiller.permadeath.core.PermadeathCalendar;
+import com.serthekiller.permadeath.core.ProgressionMode;
 import com.serthekiller.permadeath.core.ProgressionState;
 import com.serthekiller.permadeath.core.TimeFormat;
 import com.serthekiller.permadeath.core.rules.DayRules;
+import com.serthekiller.permadeath.core.time.PermadeathTimings;
 import com.serthekiller.permadeath.data.BeginningCurseData;
 import com.serthekiller.permadeath.data.CustomMessagesData;
 import com.serthekiller.permadeath.data.PortalState;
@@ -22,11 +27,14 @@ import com.serthekiller.permadeath.mechanics.DeathHandler;
 import com.serthekiller.permadeath.mechanics.DeathTrain;
 import com.serthekiller.permadeath.mechanics.LifeOrb;
 import com.serthekiller.permadeath.mechanics.Mikecrack;
+import com.serthekiller.permadeath.mechanics.Participants;
 import com.serthekiller.permadeath.mechanics.ShulkerShellEvent;
 import com.serthekiller.permadeath.mechanics.TotemSystem;
+import com.serthekiller.permadeath.mechanics.WitherSpawner;
 import com.serthekiller.permadeath.phase.PhaseManager;
 import com.serthekiller.permadeath.progression.DayController;
 import com.serthekiller.permadeath.progression.Permadeath;
+import com.serthekiller.permadeath.progression.PermadeathConfig;
 import com.serthekiller.permadeath.registry.ModItems;
 import com.serthekiller.permadeath.util.Texts;
 import net.minecraft.commands.CommandSourceStack;
@@ -50,10 +58,9 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.stats.Stats;
 import net.minecraft.world.Container;
 import net.minecraft.world.SimpleContainer;
-import net.minecraft.world.effect.MobEffectInstance;
-import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.RandomizableContainerBlockEntity;
 import net.minecraft.world.level.chunk.LevelChunk;
@@ -62,9 +69,11 @@ import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.Nullable;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -81,8 +90,6 @@ import java.util.function.Supplier;
  * is fixed by the jar (GAME60 or REAL30). Days are limited to 0-60 (D60 is final).
  */
 public final class PermadeathCommands {
-    private static final long CURSE_DURATION_MILLIS = 12L * 60L * 60L * 1000L;
-    private static final int CURSE_DURATION_TICKS = 864000;
     private static final int MAX_MESSAGE_LENGTH = 100;
 
     private PermadeathCommands() {
@@ -130,9 +137,17 @@ public final class PermadeathCommands {
                 .then(Commands.literal("awake").requires(publicRequire()).executes(PermadeathCommands::awake))
                 .then(Commands.literal("storm").requires(adminRequire())
                         .then(Commands.literal("addHours").then(Commands.argument("horas", IntegerArgumentType.integer(1, 720))
-                                .executes(ctx -> storm(ctx, true))))
+                                .executes(ctx -> storm(ctx, true, true))))
                         .then(Commands.literal("removeHours").then(Commands.argument("horas", IntegerArgumentType.integer(1, 720))
-                                .executes(ctx -> storm(ctx, false)))))
+                                .executes(ctx -> storm(ctx, false, true))))
+                        .then(Commands.literal("addMinutes").then(Commands.argument("minutos", IntegerArgumentType.integer(1, 43_200))
+                                .executes(ctx -> storm(ctx, true, false))))
+                        .then(Commands.literal("removeMinutes").then(Commands.argument("minutos", IntegerArgumentType.integer(1, 43_200))
+                                .executes(ctx -> storm(ctx, false, false)))))
+                .then(Commands.literal("tiempos").requires(adminRequire()).executes(PermadeathCommands::timers))
+                .then(Commands.literal("wither").requires(adminRequire()).executes(ctx -> witherTimer(ctx, null))
+                        .then(Commands.argument("jugador", EntityArgument.player())
+                                .executes(ctx -> witherTimer(ctx, EntityArgument.getPlayer(ctx, "jugador")))))
                 .then(Commands.literal("give").requires(adminRequire())
                         .then(Commands.argument("item", StringArgumentType.word())
                                 .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(GIVE_ITEMS.keySet(), builder))
@@ -170,8 +185,8 @@ public final class PermadeathCommands {
             return 0;
         }
         String calendar = switch (Permadeath.mode()) {
-            case GAME60 -> "GAME60 (1 día Permadeath = 1 día de Minecraft)";
-            case REAL30 -> "REAL30 (1 día Permadeath = 12 h reales, D60 = 720 h)";
+            case GAME60 -> "GAME60 (partida individual: 1 día Permadeath = 1 día de Minecraft, final de 30 min)";
+            case REAL30 -> "REAL30 (servidor: 1 día Permadeath = 12 h reales, D60 = 720 h, final de 6 h)";
         };
         reply(ctx, "§6=== Permadeath ===\n§7Modo: Hardcore Permadeath\n§7Calendario: §f" + calendar
                 + "\n§7Día actual: §f" + Permadeath.day() + "§7/" + PermadeathCalendar.FINAL_DAY
@@ -186,14 +201,17 @@ public final class PermadeathCommands {
                 + "\n§e/permadeath reload §7- (OP) Reinicia la fase actual"
                 + "\n§e/permadeath reset §7- (OP) Vuelve al día 0"
                 + "\n§e/permadeath resetstorm §7- (OP) Termina la tormenta"
-                + "\n§e/permadeath storm addHours|removeHours <horas> §7- (OP) Administra la tormenta"
+                + "\n§e/permadeath storm addHours|removeHours|addMinutes|removeMinutes <n> §7- (OP) Tormenta (tiempo real efectivo, sin escalar)"
                 + "\n§e/permadeath give <objeto> §7- (OP) Objetos de Permadeath (reliquias, Life Orb, medalla, armaduras)"
                 + "\n§e/permadeath bendicion <jugador> §7- (OP) Otorga la bendición de The Beginning"
-                + "\n§e/permadeath event shulkershell|lifeorb §7- (OP) Evento X2 Shulker Shells (4 h) o reinicia el Life Orb"
+                + "\n§e/permadeath event shulkershell|lifeorb §7- (OP) Evento X2 Shulker Shells (" + TimeFormat.compact(Permadeath.timings().shulkerEventMillis())
+                + ") o reinicia el plazo de la Life Orb"
                 + "\n§e/permadeath mikecrack enable|disable §7- (OP) Cambio de Mikecrack (activo por defecto el día 60)"
                 + "\n§e/permadeath mensaje set <jugador> <texto> §7- (OP) Cambia el mensaje de otro"
                 + "\n§e/permadeath server §7- (OP) Activa/desactiva el modo restringido"
                 + "\n§e/permadeath maldicion <jugador> §7- (OP) Maldice al último en entrar a The Beginning"
+                + "\n§e/permadeath tiempos §7- (OP) Duraciones del perfil, eventos y temporizadores por jugador"
+                + "\n§e/permadeath wither [jugador] §7- (OP) Tiempo hasta el próximo Wither del día 60"
                 + "\n§e/permadeath debug §7- (OP) Estado interno", false);
         return 1;
     }
@@ -202,13 +220,134 @@ public final class PermadeathCommands {
         if (notRunning(ctx)) {
             return 0;
         }
-        StringBuilder sb = new StringBuilder("§6=== Permadeath ===\n§7");
+        MinecraftServer server = ctx.getSource().getServer();
+        boolean paused = !Participants.anyEligible(server);
+        StringBuilder sb = new StringBuilder("§6=== Permadeath ===\n§7Perfil: §f").append(Permadeath.mode())
+                .append(Permadeath.mode() == ProgressionMode.GAME60 ? " §7(partida individual)" : " §7(servidor)").append("\n§7");
         sb.append(Permadeath.clock().describe().replace("\n", "\n§7"));
+        String pause = paused ? " §8(en pausa: ningún superviviente conectado)" : "";
         if (DeathTrain.isActive()) {
-            sb.append("\n§cDeath Train activo: quedan ").append(TimeFormat.hms(DeathTrain.remainingMillis()));
+            sb.append("\n§cDeath Train activo: quedan ").append(TimeFormat.compact(DeathTrain.remainingMillis())).append(pause);
         }
+        if (ShulkerShellEvent.isActive()) {
+            sb.append("\n§eX2 Shulker Shells: quedan ").append(TimeFormat.compact(ShulkerShellEvent.remainingMillis())).append(pause);
+        }
+        if (LifeOrb.countdownRunning()) {
+            sb.append("\n§6Life Orb: quedan ").append(TimeFormat.compact(LifeOrb.remainingMillis())).append(" para obtenerla").append(pause);
+        } else if (LifeOrb.isActive()) {
+            sb.append("\n§6Life Orb: §cplazo vencido§7 (−16 de vida máxima sin ella)");
+        }
+        sb.append("\n§7Campaña: ").append(campaignText(paused));
         reply(ctx, sb.toString(), false);
         return 1;
+    }
+
+    private static String campaignText(boolean paused) {
+        ProgressionState s = Permadeath.state();
+        return switch (s.finalPhaseState) {
+            case NOT_STARTED -> Permadeath.day() >= PermadeathCalendar.FINAL_DAY
+                    ? "§eel desafío final empieza cuando haya un superviviente conectado"
+                    : "§fen curso §7(desafío final de " + TimeFormat.compact(Permadeath.timings().finalPhaseMillis()) + " al llegar al día 60)";
+            case ACTIVE -> "§cdesafío final en curso: quedan " + TimeFormat.compact(s.finalPhaseRemainingMillis)
+                    + (paused ? " §8(en pausa)" : "");
+            case COMPLETED -> "§acompletada §7(vencedores: §f" + winners(s) + "§7)";
+            case FAILED -> "§cterminada sin vencedores";
+        };
+    }
+
+    private static String winners(ProgressionState s) {
+        List<String> names = new ArrayList<>();
+        for (FinalParticipant p : s.finalParticipants.values()) {
+            if (p.result == FinalParticipant.Result.VICTORY) {
+                names.add(p.name);
+            }
+        }
+        return names.isEmpty() ? "-" : String.join(", ", names);
+    }
+
+    /** /permadeath tiempos (OP): profile durations, global events and every per-player timer. */
+    private static int timers(CommandContext<CommandSourceStack> ctx) {
+        if (notRunning(ctx)) {
+            return 0;
+        }
+        MinecraftServer server = ctx.getSource().getServer();
+        PermadeathTimings t = Permadeath.timings();
+        ProgressionState s = Permadeath.state();
+        StringBuilder sb = new StringBuilder("§6=== Tiempos de Permadeath (").append(t.mode()).append(") ===");
+        sb.append("\n§7Wither periódico D60: §f").append(TimeFormat.compact(t.witherIntervalMillis()))
+                .append(" §7· Life Orb: §f").append(TimeFormat.compact(t.lifeOrbCountdownMillis()))
+                .append(" §7· Desafío final: §f").append(TimeFormat.compact(t.finalPhaseMillis()));
+        sb.append("\n§7X2 Shulker Shells: §f").append(TimeFormat.compact(t.shulkerEventMillis()))
+                .append(" §7· Maldición/Bendición: §f").append(TimeFormat.compact(t.beginningCurseMillis()))
+                .append("§7/§f").append(TimeFormat.compact(t.beginningBlessingMillis()));
+        sb.append("\n§7Death Train: §foriginal / ").append(t.deathTrainDivisor())
+                .append(t.deathTrainMinimumMillis() > 0L ? " (mínimo " + TimeFormat.compact(t.deathTrainMinimumMillis()) + ")" : "")
+                .append(" §7(D60: §f").append(TimeFormat.compact(t.deathTrainMillis(60))).append("§7)");
+        sb.append("\n§7Opciones: strictCampaignDuration=§f").append(PermadeathConfig.strictCampaign())
+                .append(" §7freezeAfterCampaign=§f").append(PermadeathConfig.freezeAfterCampaign())
+                .append(" §7witherAccumulationLimit=§f").append(PermadeathConfig.witherAccumulationLimit());
+        sb.append("\n§7Supervivientes elegibles conectados: §f").append(Participants.anyEligible(server) ? "sí" : "no (tiempo activo en pausa)");
+        sb.append("\n§7Death Train: §f").append(DeathTrain.isActive() ? TimeFormat.compact(DeathTrain.remainingMillis()) : "no")
+                .append(" §7· X2 Shulker: §f").append(ShulkerShellEvent.isActive() ? TimeFormat.compact(ShulkerShellEvent.remainingMillis()) : "no")
+                .append(" §7· Life Orb: §f").append(LifeOrb.countdownRunning() ? TimeFormat.compact(LifeOrb.remainingMillis()) : LifeOrb.isActive() ? "vencido" : "-");
+        sb.append("\n§7Desafío final: §f").append(s.finalPhaseState).append(s.finalPhaseState == FinalPhaseState.ACTIVE
+                ? " §7(quedan §f" + TimeFormat.compact(s.finalPhaseRemainingMillis) + "§7)" : "");
+        for (Map.Entry<UUID, FinalParticipant> e : s.finalParticipants.entrySet()) {
+            FinalParticipant p = e.getValue();
+            sb.append("\n§7  · ").append(p.name).append(": §f").append(p.result).append(" §8(eliminado=").append(p.eliminated)
+                    .append(", orbeATiempo=").append(p.lifeOrbBeforeDeadline).append(", conservaOrbe=").append(p.holdingLifeOrb).append(')');
+        }
+        sb.append(witherLines(server));
+        BeginningCurseData curses = BeginningCurseData.get(server);
+        curses.curses().forEach((uuid, left) -> sb.append("\n§7Maldición ").append(playerName(server, uuid)).append(": §f").append(TimeFormat.compact(left)));
+        curses.blessings().forEach((uuid, left) -> sb.append("\n§7Bendición ").append(playerName(server, uuid)).append(": §f").append(TimeFormat.compact(left)));
+        reply(ctx, sb.toString(), false);
+        return 1;
+    }
+
+    private static String witherLines(MinecraftServer server) {
+        StringBuilder sb = new StringBuilder();
+        if (!WitherSpawner.running()) {
+            sb.append("\n§7Withers periódicos: §finactivos").append(Permadeath.day() < DayRules.WITHER_FROM_DAY ? " (antes del día 60)" : " (campaña terminada)");
+            return sb.toString();
+        }
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            sb.append("\n§7Próximo Wither de ").append(player.getGameProfile().getName()).append(": §f")
+                    .append(TimeFormat.compact(WitherSpawner.remainingFor(player.getUUID())))
+                    .append(player.level().dimension() == Level.OVERWORLD && Participants.isEligible(player) ? "" : " §8(en pausa: fuera del Overworld o no elegible)");
+        }
+        for (Map.Entry<UUID, Long> e : Permadeath.state().witherRemainingMillis.entrySet()) {
+            if (server.getPlayerList().getPlayer(e.getKey()) == null) {
+                sb.append("\n§7Próximo Wither de ").append(playerName(server, e.getKey())).append(": §f").append(TimeFormat.compact(e.getValue()))
+                        .append(" §8(desconectado)");
+            }
+        }
+        return sb.toString();
+    }
+
+    /** /permadeath wither [jugador] (OP). */
+    private static int witherTimer(CommandContext<CommandSourceStack> ctx, @Nullable ServerPlayer target) {
+        if (notRunning(ctx)) {
+            return 0;
+        }
+        if (target == null) {
+            reply(ctx, "§6=== Withers del día 60 (cada " + TimeFormat.compact(Permadeath.timings().witherIntervalMillis())
+                    + " en el Overworld) ===" + witherLines(ctx.getSource().getServer()), false);
+            return 1;
+        }
+        reply(ctx, "§7Próximo Wither de §f" + target.getGameProfile().getName() + "§7: §f"
+                + TimeFormat.compact(WitherSpawner.remainingFor(target.getUUID()))
+                + (WitherSpawner.running() ? "" : " §8(inactivo: " + (Permadeath.day() < DayRules.WITHER_FROM_DAY ? "antes del día 60" : "campaña terminada") + ")"), false);
+        return 1;
+    }
+
+    private static String playerName(MinecraftServer server, UUID uuid) {
+        ServerPlayer online = server.getPlayerList().getPlayer(uuid);
+        if (online != null) {
+            return online.getGameProfile().getName();
+        }
+        FinalParticipant p = Permadeath.state().finalParticipants.get(uuid);
+        return p != null ? p.name : uuid.toString();
     }
 
     private static int beginningLocation(CommandContext<CommandSourceStack> ctx) {
@@ -356,19 +495,21 @@ public final class PermadeathCommands {
         return 1;
     }
 
-    private static int storm(CommandContext<CommandSourceStack> ctx, boolean add) {
+    private static int storm(CommandContext<CommandSourceStack> ctx, boolean add, boolean hours) {
         if (notRunning(ctx)) {
             return 0;
         }
         MinecraftServer server = ctx.getSource().getServer();
-        long millis = IntegerArgumentType.getInteger(ctx, "horas") * 3_600_000L;
+        // Effective real time chosen by the administrator: never scaled to the profile.
+        long millis = hours ? IntegerArgumentType.getInteger(ctx, "horas") * 3_600_000L : IntegerArgumentType.getInteger(ctx, "minutos") * 60_000L;
         if (add) {
             DeathTrain.addMillis(server, millis);
         } else if (!DeathTrain.removeMillis(server, millis)) {
             return fail(ctx, "§cNo hay ninguna tormenta en marcha.");
         }
         SurvivalAchievementData.get(server).flagStormResetUsed(server);
-        reply(ctx, "§aOperación completada exitosamente. §7Quedan " + TimeFormat.hms(DeathTrain.remainingMillis()) + " de tormenta.", true);
+        reply(ctx, "§aOperación completada exitosamente. §7Quedan " + TimeFormat.compact(DeathTrain.remainingMillis())
+                + " de tormenta §8(tiempo real efectivo: solo corre con supervivientes conectados)§7.", true);
         return 1;
     }
 
@@ -482,13 +623,15 @@ public final class PermadeathCommands {
         }
         ServerPlayer target = EntityArgument.getPlayer(ctx, "jugador");
         MinecraftServer server = ctx.getSource().getServer();
-        BeginningCurseData.get(server).curse(target.getUUID(), CURSE_DURATION_MILLIS);
-        target.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, CURSE_DURATION_TICKS, 0, false, true, true));
-        target.addEffect(new MobEffectInstance(MobEffects.WEAKNESS, CURSE_DURATION_TICKS, 0, false, true, true));
+        long millis = Permadeath.timings().beginningCurseMillis();
+        String duration = TimeFormat.compact(millis);
+        BeginningCurseData.get(server).curse(target.getUUID(), millis);
+        BeginningEffects.applyCurse(target, millis);
         Texts.broadcast(server, "§c[PERMADEATH] §d" + target.getGameProfile().getName()
                 + ", ¡Desgracia! Has recibido la maldición de The Beginning por entrar el último. ¡Sufre y muere por lento! "
-                + "NO puedes usar cubos de leche durante 12 horas dentro de Permadeath o morirás al instante.");
-        reply(ctx, "§a✓ Maldición aplicada a " + target.getGameProfile().getName() + " (12h reales, sin leche).", true);
+                + "NO puedes usar cubos de leche durante " + duration + " de juego dentro de Permadeath o morirás al instante.");
+        reply(ctx, "§a✓ Maldición aplicada a " + target.getGameProfile().getName() + " (" + duration
+                + " de juego efectivo: lentitud, debilidad y sin leche).", true);
         return 1;
     }
 
@@ -583,13 +726,23 @@ public final class PermadeathCommands {
                     .append(" §7maxElapsed=§f").append(TimeFormat.realDuration(Duration.ofMillis(s.maxElapsedMillis)));
         }
         sb.append("\n§7executedMilestones=§f").append(s.executedMilestones);
-        sb.append("\n§7deathTrain=§f").append(DeathTrain.isActive() ? TimeFormat.hms(DeathTrain.remainingMillis()) : "off")
-                .append(" §7uhc=§f").append(s.deathTrainUhcActive);
-        sb.append("\n§7lifeOrb: deadline=§f").append(s.lifeOrbDeadlineEpochMillis < 0L ? "-" : TimeFormat.utc(Instant.ofEpochMilli(s.lifeOrbDeadlineEpochMillis)))
+        sb.append("\n§7deathTrain=§f").append(DeathTrain.isActive() ? TimeFormat.compact(DeathTrain.remainingMillis()) : "off")
+                .append(" §7uhc=§f").append(s.deathTrainUhcActive)
+                .append(" §7shulkerEvent=§f").append(ShulkerShellEvent.isActive() ? TimeFormat.compact(ShulkerShellEvent.remainingMillis()) : "off");
+        sb.append("\n§7lifeOrb: remaining=§f").append(s.lifeOrbRemainingMillis < 0L ? "-" : TimeFormat.compact(s.lifeOrbRemainingMillis))
                 .append(" §7active=§f").append(s.lifeOrbActive);
+        sb.append("\n§7final=§f").append(s.finalPhaseState).append(" §7remaining=§f").append(TimeFormat.compact(s.finalPhaseRemainingMillis))
+                .append(" §7participants=§f").append(s.finalParticipants.size())
+                .append(s.finalPhaseStartedEpochMillis > 0L ? " §7started=§f" + TimeFormat.utc(Instant.ofEpochMilli(s.finalPhaseStartedEpochMillis)) : "")
+                .append(s.finalPhaseEndedEpochMillis > 0L ? " §7ended=§f" + TimeFormat.utc(Instant.ofEpochMilli(s.finalPhaseEndedEpochMillis)) : "");
         for (Map.Entry<UUID, Long> e : s.witherRemainingMillis.entrySet()) {
-            sb.append("\n§7wither[").append(e.getKey()).append("]=§f").append(TimeFormat.hms(e.getValue()));
+            sb.append("\n§7wither[").append(playerName(ctx.getSource().getServer(), e.getKey())).append("]=§f").append(TimeFormat.compact(e.getValue()));
         }
+        sb.append("\n§7timings=§f").append(Permadeath.timings().mode()).append(" §7strict=§f").append(PermadeathConfig.strictCampaign())
+                .append(" §7freezeAfterCampaign=§f").append(PermadeathConfig.freezeAfterCampaign())
+                .append(" §7eligibleOnline=§f").append(Participants.anyEligible(ctx.getSource().getServer()));
+        sb.append("\n§7migration: from=§f").append(s.migratedFromVersion == 0 ? "-" : String.valueOf(s.migratedFromVersion))
+                .append(s.migrationEpochMillis > 0L ? " §7at=§f" + TimeFormat.utc(Instant.ofEpochMilli(s.migrationEpochMillis)) + " §7(" + s.migrationSummary + ")" : "");
         sb.append("\n§7mikecrack=§f").append(Mikecrack.isEnabled()).append(" §7(disabledByOp=§f").append(s.mikecrackDisabled).append("§7)").append(" §7endArenaPrepared=§f").append(s.endArenaPrepared)
                 .append(" §7now=§f").append(TimeFormat.utc(Instant.ofEpochMilli(now)));
         reply(ctx, sb.toString(), false);

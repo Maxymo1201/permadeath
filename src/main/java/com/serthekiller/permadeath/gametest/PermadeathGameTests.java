@@ -2,16 +2,35 @@ package com.serthekiller.permadeath.gametest;
 
 import com.mojang.authlib.GameProfile;
 import com.serthekiller.permadeath.PermadeathMod;
+import com.serthekiller.permadeath.beginning.BeginningEffects;
+import com.serthekiller.permadeath.core.FinalParticipant;
+import com.serthekiller.permadeath.core.FinalPhaseState;
 import com.serthekiller.permadeath.core.PermadeathCalendar;
+import com.serthekiller.permadeath.core.ProgressionMode;
+import com.serthekiller.permadeath.core.ProgressionState;
+import com.serthekiller.permadeath.core.TimeFormat;
+import com.serthekiller.permadeath.core.rules.DayRules;
+import com.serthekiller.permadeath.core.time.CampaignTimers;
+import com.serthekiller.permadeath.core.time.FinalChallenge;
+import com.serthekiller.permadeath.core.time.PermadeathTimings;
+import com.serthekiller.permadeath.core.time.TimerMigration;
+import com.serthekiller.permadeath.data.BeginningCurseData;
 import com.serthekiller.permadeath.data.DeathRecordsData;
+import com.serthekiller.permadeath.data.PermadeathData;
 import com.serthekiller.permadeath.end.EnderDragonDemon;
 import com.serthekiller.permadeath.mechanics.DeathHandler;
 import com.serthekiller.permadeath.mechanics.DeathTrain;
+import com.serthekiller.permadeath.mechanics.FinalChallengeManager;
+import com.serthekiller.permadeath.mechanics.LifeOrb;
 import com.serthekiller.permadeath.mechanics.LockedSlots;
+import com.serthekiller.permadeath.mechanics.Participants;
 import com.serthekiller.permadeath.mechanics.PlayerHealth;
+import com.serthekiller.permadeath.mechanics.ShulkerShellEvent;
+import com.serthekiller.permadeath.mechanics.WitherSpawner;
 import com.serthekiller.permadeath.mobs.EnderMobs;
 import com.serthekiller.permadeath.mobs.MobTracking;
 import com.serthekiller.permadeath.phase.PhaseManager;
+import com.serthekiller.permadeath.progression.CampaignTicker;
 import com.serthekiller.permadeath.progression.DayController;
 import com.serthekiller.permadeath.progression.Permadeath;
 import com.serthekiller.permadeath.recipes.RecipeFilter;
@@ -20,9 +39,12 @@ import io.netty.channel.embedded.EmbeddedChannel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.gametest.framework.BeforeBatch;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.network.Connection;
 import net.minecraft.network.PacketSendListener;
 import net.minecraft.network.chat.Component;
@@ -49,6 +71,7 @@ import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.animal.IronGolem;
 import net.minecraft.world.entity.animal.Pig;
+import net.minecraft.world.entity.boss.wither.WitherBoss;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.item.PrimedTnt;
 import net.minecraft.world.entity.monster.AbstractSkeleton;
@@ -62,6 +85,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.CraftingInput;
 import net.minecraft.world.item.crafting.RecipeType;
+import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
@@ -162,7 +186,7 @@ public final class PermadeathGameTests {
         setDay(level, 60);
         quietD60();
         Permadeath.state().lifeOrbActive = true;
-        Permadeath.state().lifeOrbDeadlineEpochMillis = -1L;
+        Permadeath.state().lifeOrbRemainingMillis = -1L;
         Permadeath.state().markChanged();
     }
 
@@ -667,5 +691,486 @@ public final class PermadeathGameTests {
             helper.assertTrue(player.getCooldowns().isOnCooldown(Items.ENDER_PEARL), "D60 pearl cooldown must last 6 s after landing");
             finish(helper, player);
         });
+    }
+
+    // ------------------------------------------------------------------------------------------------ campaign timers
+
+    /** Every timer batch starts clean: no storm, event, Life Orb countdown, final challenge or Wither counter. */
+    private static void resetTimers(ServerLevel level) {
+        MinecraftServer server = level.getServer();
+        ProgressionState s = Permadeath.state();
+        DeathTrain.reset(server);
+        s.shulkerEventRemainingMillis = 0L;
+        FinalChallenge.reset(s);
+        CampaignTimers.clearLifeOrb(s);
+        s.witherRemainingMillis.clear();
+        s.markChanged();
+    }
+
+    /** The progression file as a restart would read it again (save + load through the SavedData factory). */
+    private static PermadeathData reloadProgression(GameTestHelper helper) {
+        HolderLookup.Provider registries = helper.getLevel().registryAccess();
+        CompoundTag tag = Permadeath.data().save(new CompoundTag(), registries);
+        return PermadeathData.factory().deserializer().apply(tag, registries);
+    }
+
+    private static int discardWithers(GameTestHelper helper, ServerPlayer player) {
+        List<WitherBoss> withers = helper.getLevel().getEntitiesOfClass(WitherBoss.class, player.getBoundingBox().inflate(16.0));
+        withers.forEach(WitherBoss::discard);
+        return withers.size();
+    }
+
+    private static void assertMillis(GameTestHelper helper, long actual, long expected, String what) {
+        helper.assertTrue(actual == expected, what + ": expected " + expected + " ms (" + TimeFormat.compact(expected) + "), got "
+                + actual + " ms (" + TimeFormat.compact(actual) + ")");
+    }
+
+    @BeforeBatch(batch = "tdeaths")
+    public static void timerDeathsBatch(ServerLevel level) {
+        setDay(level, 40);
+        resetTimers(level);
+    }
+
+    @BeforeBatch(batch = "tpause")
+    public static void timerPauseBatch(ServerLevel level) {
+        setDay(level, 40);
+        resetTimers(level);
+    }
+
+    @BeforeBatch(batch = "tuhc")
+    public static void timerUhcBatch(ServerLevel level) {
+        setDay(level, 50);
+        resetTimers(level);
+    }
+
+    @BeforeBatch(batch = "twither")
+    public static void timerWitherBatch(ServerLevel level) {
+        setDay(level, 60);
+        quietD60();
+        resetTimers(level);
+    }
+
+    @BeforeBatch(batch = "tfinal")
+    public static void timerFinalBatch(ServerLevel level) {
+        setDay(level, 60);
+        quietD60();
+        resetTimers(level);
+    }
+
+    @BeforeBatch(batch = "tfinalfail")
+    public static void timerFinalFailBatch(ServerLevel level) {
+        setDay(level, 60);
+        quietD60();
+        resetTimers(level);
+    }
+
+    @BeforeBatch(batch = "tevents")
+    public static void timerEventsBatch(ServerLevel level) {
+        setDay(level, 50);
+        resetTimers(level);
+    }
+
+    @GameTest(template = EMPTY, batch = "tpause")
+    public static void deathTrainDurationOfEveryDayFollowsTheProfile(GameTestHelper helper) {
+        MinecraftServer server = helper.getLevel().getServer();
+        ProgressionState s = Permadeath.state();
+        boolean game60 = Permadeath.mode() == ProgressionMode.GAME60;
+        long total = 0L;
+        for (int day = 0; day <= PermadeathCalendar.FINAL_DAY; day++) {
+            long original = DayRules.deathTrainDurationMillis(day);
+            long expected = game60 ? Math.max(60_000L, original / 72L) : original / 2L;
+            long added = DeathTrain.trigger(server, day);
+            total += expected;
+            assertMillis(helper, added, expected, "Death Train of D" + day);
+        }
+        assertMillis(helper, s.deathTrainRemainingMillis, total, "deaths of D0-D60 must add up");
+        // Reference values of the specification.
+        assertMillis(helper, Permadeath.timings().deathTrainMillis(1), game60 ? 60_000L : 30L * PermadeathTimings.MINUTE, "D1");
+        assertMillis(helper, Permadeath.timings().deathTrainMillis(24), game60 ? 20L * PermadeathTimings.MINUTE : 12L * PermadeathTimings.HOUR, "D24");
+        assertMillis(helper, Permadeath.timings().deathTrainMillis(40), game60 ? 800_000L : 8L * PermadeathTimings.HOUR, "D40");
+        assertMillis(helper, Permadeath.timings().deathTrainMillis(50), game60 ? 60_000L : 15L * PermadeathTimings.MINUTE, "D50");
+        assertMillis(helper, Permadeath.timings().deathTrainMillis(60), game60 ? 275_000L : 165L * PermadeathTimings.MINUTE, "D60");
+        DeathTrain.reset(server);
+        helper.assertTrue(!DeathTrain.isActive(), "reset must end the storm");
+        helper.succeed();
+    }
+
+    @GameTest(template = EMPTY, batch = "tpause")
+    public static void deathTrainRunsOnlyWithAnEligibleSurvivorAndSurvivesARestart(GameTestHelper helper) {
+        MinecraftServer server = helper.getLevel().getServer();
+        ProgressionState s = Permadeath.state();
+        DeathTrain.reset(server);
+        long one = Permadeath.timings().deathTrainMillis(40);
+        helper.assertTrue(!Participants.anyEligible(server), "no eligible survivor may be online at the start of this test");
+        DeathTrain.trigger(server, 40);
+        DeathTrain.trigger(server, 40);
+        assertMillis(helper, s.deathTrainRemainingMillis, 2 * one, "two deaths add two storms");
+        CampaignTicker.run(server, 60_000L);
+        assertMillis(helper, s.deathTrainRemainingMillis, 2 * one, "an empty server must not consume the storm");
+
+        ServerPlayer player = mockPlayer(helper);
+        CampaignTicker.run(server, 60_000L);
+        assertMillis(helper, s.deathTrainRemainingMillis, 2 * one - 60_000L, "a survivor online consumes real time");
+        player.setGameMode(GameType.SPECTATOR);
+        CampaignTicker.run(server, 60_000L);
+        player.setGameMode(GameType.CREATIVE);
+        CampaignTicker.run(server, 60_000L);
+        assertMillis(helper, s.deathTrainRemainingMillis, 2 * one - 60_000L, "spectators and creative players keep it paused");
+        player.setGameMode(GameType.SURVIVAL);
+
+        long before = s.deathTrainRemainingMillis;
+        DeathTrain.addMillis(server, PermadeathTimings.HOUR);
+        assertMillis(helper, s.deathTrainRemainingMillis, before + PermadeathTimings.HOUR, "storm add is effective real time, not scaled");
+        helper.assertTrue(DeathTrain.removeMillis(server, PermadeathTimings.HOUR), "storm remove must work while it runs");
+        assertMillis(helper, s.deathTrainRemainingMillis, before, "storm remove");
+
+        PermadeathData reloaded = reloadProgression(helper);
+        assertMillis(helper, reloaded.state().deathTrainRemainingMillis, before, "the remaining time must be saved (restart)");
+
+        CampaignTimers.Step step = CampaignTicker.run(server, before);
+        helper.assertTrue(step.deathTrainEnded() && !DeathTrain.isActive(), "the storm must end when its time is used up");
+        helper.assertTrue(s.deathTrainRemainingMillis == 0L, "never negative: " + s.deathTrainRemainingMillis);
+        helper.assertTrue(!CampaignTicker.run(server, 60_000L).deathTrainEnded(), "the end is reported once");
+        helper.assertTrue(!DeathTrain.removeMillis(server, 1_000L), "nothing to remove without a storm");
+        finish(helper, player);
+    }
+
+    @GameTest(template = EMPTY, batch = "tdeaths", timeoutTicks = 120)
+    public static void simultaneousDeathsAddBothStorms(GameTestHelper helper) {
+        ServerPlayer first = mockPlayer(helper);
+        ServerPlayer second = mockPlayer(helper);
+        helper.runAtTickTime(AFTER_SPAWN_PROTECTION, () -> {
+            DamageSource source = helper.getLevel().damageSources().generic();
+            first.hurt(source, 1000.0F);
+            second.hurt(source, 1000.0F);
+        });
+        helper.runAtTickTime(AFTER_SPAWN_PROTECTION + 5, () -> {
+            MinecraftServer server = helper.getLevel().getServer();
+            long remaining = Permadeath.state().deathTrainRemainingMillis;
+            long expected = 2 * Permadeath.timings().deathTrainMillis(40);
+            helper.assertTrue(!first.isAlive() && !second.isAlive(), "both players must have died");
+            boolean eligible = Participants.anyEligible(server);
+            CampaignTicker.run(server, 60_000L);
+            long afterStep = Permadeath.state().deathTrainRemainingMillis;
+            DeathTrain.reset(server);
+            assertMillis(helper, remaining, expected, "two deaths in the same tick add both storms");
+            helper.assertTrue(!eligible, "dead players are not eligible survivors");
+            assertMillis(helper, afterStep, expected, "without survivors the storm is paused");
+            helper.succeed();
+        });
+    }
+
+    @GameTest(template = EMPTY, batch = "tuhc")
+    public static void deathTrainRestoresNaturalRegenerationOnlyIfItChangedIt(GameTestHelper helper) {
+        MinecraftServer server = helper.getLevel().getServer();
+        ProgressionState s = Permadeath.state();
+        GameRules.BooleanValue regeneration = server.getGameRules().getRule(GameRules.RULE_NATURAL_REGENERATION);
+        helper.assertTrue(!WitherSpawner.running(), "periodic Withers only exist on D60");
+        ServerPlayer player = mockPlayer(helper);
+
+        regeneration.set(true, server);
+        DeathTrain.trigger(server, 50);
+        CampaignTicker.run(server, 0L);
+        helper.assertTrue(!regeneration.get() && s.deathTrainUhcActive, "a D50 storm turns naturalRegeneration off (UHC)");
+        helper.assertTrue(reloadProgression(helper).state().deathTrainUhcActive, "the UHC flag must be saved");
+        CampaignTicker.run(server, s.deathTrainRemainingMillis);
+        helper.assertTrue(regeneration.get() && !s.deathTrainUhcActive, "the end of the storm restores naturalRegeneration");
+
+        regeneration.set(false, server);
+        DeathTrain.trigger(server, 50);
+        CampaignTicker.run(server, 0L);
+        helper.assertTrue(!s.deathTrainUhcActive, "a rule already off was not changed by the storm");
+        CampaignTicker.run(server, s.deathTrainRemainingMillis);
+        boolean keptOff = !regeneration.get();
+        regeneration.set(true, server);
+        helper.assertTrue(keptOff, "naturalRegeneration turned off by the server must stay off after the storm");
+        finish(helper, player);
+    }
+
+    @GameTest(template = EMPTY, batch = "twither")
+    public static void witherCounterIsPerPlayerAndOnlyRunsForEligiblePlayers(GameTestHelper helper) {
+        MinecraftServer server = helper.getLevel().getServer();
+        ProgressionState s = Permadeath.state();
+        long interval = Permadeath.timings().witherIntervalMillis();
+        ServerPlayer a = mockPlayer(helper);
+        ServerPlayer b = mockPlayer(helper);
+        CampaignTicker.run(server, 0L);
+        helper.assertTrue(WitherSpawner.running(), "periodic Withers run on D60");
+        assertMillis(helper, WitherSpawner.remainingFor(a.getUUID()), interval, "counter of a new player");
+
+        s.witherRemainingMillis.put(b.getUUID(), interval / 2);
+        CampaignTicker.run(server, interval / 2);
+        int summoned = discardWithers(helper, a);
+        helper.assertTrue(summoned == 1, "exactly one Wither (for the second player) expected, got " + summoned);
+        assertMillis(helper, WitherSpawner.remainingFor(a.getUUID()), interval / 2, "first player keeps its own counter");
+        assertMillis(helper, WitherSpawner.remainingFor(b.getUUID()), interval, "the counter restarts once the Wither exists");
+
+        a.setGameMode(GameType.SPECTATOR);
+        CampaignTicker.run(server, interval / 4);
+        assertMillis(helper, WitherSpawner.remainingFor(a.getUUID()), interval / 2, "a spectator's counter does not run");
+        assertMillis(helper, WitherSpawner.remainingFor(b.getUUID()), interval - interval / 4, "an eligible player's counter runs");
+        a.setGameMode(GameType.SURVIVAL);
+
+        // A long freeze (or catch-up) never summons a burst of Withers. The final challenge is kept running for it.
+        a.setGameMode(GameType.SPECTATOR);
+        s.finalPhaseRemainingMillis = 100 * interval;
+        CampaignTicker.run(server, 10 * interval);
+        summoned = discardWithers(helper, b);
+        helper.assertTrue(summoned == 1, "one Wither after a long step, got " + summoned);
+        assertMillis(helper, WitherSpawner.remainingFor(b.getUUID()), interval, "counter after the long step");
+        a.setGameMode(GameType.SURVIVAL);
+
+        PermadeathData reloaded = reloadProgression(helper);
+        assertMillis(helper, reloaded.state().witherRemainingMillis.getOrDefault(a.getUUID(), -1L), interval / 2,
+                "the counter of each player must be saved");
+        resetTimers(helper.getLevel());
+        discardWithers(helper, a);
+        a.connection.disconnect(Component.literal("Permadeath GameTest finished"));
+        finish(helper, b);
+    }
+
+    @GameTest(template = EMPTY, batch = "tfinal")
+    public static void finalChallengeVictoryTimeline(GameTestHelper helper) {
+        MinecraftServer server = helper.getLevel().getServer();
+        ProgressionState s = Permadeath.state();
+        PermadeathTimings timings = Permadeath.timings();
+        ServerPlayer player = mockPlayer(helper);
+        CampaignTicker.run(server, 0L);
+        helper.assertTrue(s.finalPhaseState == FinalPhaseState.ACTIVE, "the final challenge starts with a survivor on D60, is " + s.finalPhaseState);
+        assertMillis(helper, s.finalPhaseRemainingMillis, timings.finalPhaseMillis(), "final challenge duration");
+        assertMillis(helper, s.lifeOrbRemainingMillis, timings.lifeOrbCountdownMillis(), "Life Orb countdown starts at T0");
+        helper.assertTrue(s.finalParticipants.containsKey(player.getUUID()), "the survivor must be a participant");
+
+        player.setGameMode(GameType.SPECTATOR);
+        CampaignTicker.run(server, 60_000L);
+        assertMillis(helper, s.finalPhaseRemainingMillis, timings.finalPhaseMillis(), "the final is paused without survivors");
+        assertMillis(helper, s.lifeOrbRemainingMillis, timings.lifeOrbCountdownMillis(), "the Life Orb countdown is paused too");
+        player.setGameMode(GameType.SURVIVAL);
+
+        CampaignTicker.run(server, timings.lifeOrbCountdownMillis() - 60_000L);
+        discardWithers(helper, player);
+        assertMillis(helper, s.lifeOrbRemainingMillis, 60_000L, "Life Orb time left one minute before the deadline");
+        player.getInventory().add(new ItemStack(ModItems.LIFE_ORB.get()));
+        CampaignTicker.run(server, 0L);
+        FinalParticipant participant = s.finalParticipants.get(player.getUUID());
+        helper.assertTrue(participant.lifeOrbBeforeDeadline, "a Life Orb held before the deadline must count");
+
+        CampaignTimers.Step step = CampaignTicker.run(server, 60_000L);
+        helper.assertTrue(step.lifeOrbExpired() && s.lifeOrbActive, "the Life Orb deadline must be reached");
+        AttributeInstance health = player.getAttribute(Attributes.MAX_HEALTH);
+        helper.assertTrue(health != null && health.getModifier(PlayerHealth.LIFE_ORB_PENALTY) == null, "a Life Orb holder gets no penalty");
+        assertMillis(helper, s.finalPhaseRemainingMillis, timings.finalPhaseMillis() - timings.lifeOrbCountdownMillis(),
+                "final time left at the Life Orb deadline");
+
+        step = CampaignTicker.run(server, s.finalPhaseRemainingMillis);
+        discardWithers(helper, player);
+        helper.assertTrue(step.finalPhaseEnded(), "the final challenge must end");
+        helper.assertTrue(s.finalPhaseState == FinalPhaseState.COMPLETED, "one winner: COMPLETED expected, got " + s.finalPhaseState);
+        helper.assertTrue(participant.result == FinalParticipant.Result.VICTORY, "the survivor with a Life Orb wins, got " + participant.result);
+        helper.assertTrue(Permadeath.day() == PermadeathCalendar.FINAL_DAY, "the calendar stays on D60");
+        long ended = s.finalPhaseEndedEpochMillis;
+
+        PermadeathData reloaded = reloadProgression(helper);
+        helper.assertTrue(reloaded.state().finalPhaseState == FinalPhaseState.COMPLETED, "the result must be saved");
+        FinalParticipant saved = reloaded.state().finalParticipants.get(player.getUUID());
+        helper.assertTrue(saved != null && saved.result == FinalParticipant.Result.VICTORY, "the participant result must be saved");
+
+        CampaignTicker.run(server, timings.finalPhaseMillis());
+        helper.assertTrue(s.finalPhaseState == FinalPhaseState.COMPLETED && s.finalPhaseEndedEpochMillis == ended, "the result is recorded once");
+        helper.assertTrue(!WitherSpawner.running(), "periodic Withers stop after the campaign (freezeAfterCampaign)");
+        int afterCampaign = discardWithers(helper, player);
+        helper.assertTrue(afterCampaign == 0, "no Wither after the campaign, got " + afterCampaign);
+        resetTimers(helper.getLevel());
+        finish(helper, player);
+    }
+
+    @BeforeBatch(batch = "tlifeorb")
+    public static void timerLifeOrbBatch(ServerLevel level) {
+        setDay(level, 60);
+        quietD60();
+        resetTimers(level);
+    }
+
+    @GameTest(template = EMPTY, batch = "tlifeorb", timeoutTicks = 200)
+    public static void lifeOrbDeadlineWithoutOrbPenalizesAfterTheSyncGrace(GameTestHelper helper) {
+        // The countdown is run down to 0 and the shared timers reach the deadline (lifeOrbActive is not set directly);
+        // a player without a Life Orb then loses max health, but only after the sync grace.
+        ServerPlayer player = mockPlayer(helper);
+        helper.runAtTickTime(AFTER_SPAWN_PROTECTION, () -> {
+            ProgressionState s = Permadeath.state();
+            if (!s.lifeOrbActive) {
+                CampaignTimers.startLifeOrbCountdown(s, Permadeath.timings());
+                s.lifeOrbRemainingMillis = 0L;
+            }
+        });
+        helper.runAtTickTime(AFTER_SPAWN_PROTECTION + LifeOrb.GRACE_TICKS + 10, () -> {
+            AttributeInstance health = player.getAttribute(Attributes.MAX_HEALTH);
+            boolean penalized = health != null && health.getModifier(PlayerHealth.LIFE_ORB_PENALTY) != null;
+            boolean alive = player.isAlive();
+            CampaignTimers.clearLifeOrb(Permadeath.state());
+            helper.assertTrue(penalized, "a player without a Life Orb must get the penalty after the deadline");
+            helper.assertTrue(alive, "the penalty only lowers the max health");
+            finish(helper, player);
+        });
+    }
+
+    @GameTest(template = EMPTY, batch = "tfinalfail")
+    public static void finalChallengeFailsWhenEveryParticipantIsEliminated(GameTestHelper helper) {
+        MinecraftServer server = helper.getLevel().getServer();
+        ProgressionState s = Permadeath.state();
+        ServerPlayer a = mockPlayer(helper);
+        ServerPlayer b = mockPlayer(helper);
+        CampaignTicker.run(server, 0L);
+        helper.assertTrue(s.finalPhaseState == FinalPhaseState.ACTIVE, "final challenge must be active");
+        FinalChallengeManager.onPermadeath(a);
+        helper.assertTrue(s.finalPhaseState == FinalPhaseState.ACTIVE, "one participant is still alive");
+        helper.assertTrue(s.finalParticipants.get(a.getUUID()).eliminated, "the dead participant is eliminated");
+        FinalChallengeManager.onPermadeath(b);
+        helper.assertTrue(s.finalPhaseState == FinalPhaseState.FAILED, "every participant eliminated: FAILED, got " + s.finalPhaseState);
+        long ended = s.finalPhaseEndedEpochMillis;
+        FinalChallengeManager.onPermadeath(b);
+        CampaignTicker.run(server, Permadeath.timings().finalPhaseMillis());
+        discardWithers(helper, a);
+        helper.assertTrue(s.finalPhaseState == FinalPhaseState.FAILED && s.finalPhaseEndedEpochMillis == ended, "the result is recorded once");
+        helper.assertTrue(s.finalParticipants.values().stream().allMatch(p -> p.result == FinalParticipant.Result.DEFEAT), "both lose");
+        resetTimers(helper.getLevel());
+        a.connection.disconnect(Component.literal("Permadeath GameTest finished"));
+        finish(helper, b);
+    }
+
+    @GameTest(template = EMPTY, batch = "tevents")
+    public static void shulkerEventUsesActiveTime(GameTestHelper helper) {
+        MinecraftServer server = helper.getLevel().getServer();
+        ProgressionState s = Permadeath.state();
+        long duration = Permadeath.timings().shulkerEventMillis();
+        ServerPlayer player = mockPlayer(helper);
+        helper.assertTrue(ShulkerShellEvent.start(), "the event must start");
+        helper.assertTrue(!ShulkerShellEvent.start(), "a running event is not restarted");
+        assertMillis(helper, s.shulkerEventRemainingMillis, duration, "X2 Shulker Shells duration");
+        helper.assertTrue(ShulkerShellEvent.shellsPerDrop() == 2, "two shells per drop during the event");
+        CampaignTicker.run(server, duration - 1_000L);
+        player.setGameMode(GameType.SPECTATOR);
+        CampaignTicker.run(server, 60_000L);
+        assertMillis(helper, s.shulkerEventRemainingMillis, 1_000L, "the event is paused without survivors");
+        player.setGameMode(GameType.SURVIVAL);
+        helper.assertTrue(reloadProgression(helper).state().shulkerEventRemainingMillis == 1_000L, "the event time must be saved");
+        CampaignTimers.Step step = CampaignTicker.run(server, 5_000L);
+        helper.assertTrue(step.shulkerEventEnded() && ShulkerShellEvent.shellsPerDrop() == 1, "the event must end");
+        finish(helper, player);
+    }
+
+    @GameTest(template = EMPTY, batch = "tevents")
+    public static void beginningCurseAndBlessingFollowTheirOwnClock(GameTestHelper helper) {
+        MinecraftServer server = helper.getLevel().getServer();
+        HolderLookup.Provider registries = helper.getLevel().registryAccess();
+        PermadeathTimings timings = Permadeath.timings();
+        BeginningCurseData data = BeginningCurseData.get(server);
+        ServerPlayer player = mockPlayer(helper);
+        UUID uuid = player.getUUID();
+        long curse = timings.beginningCurseMillis();
+        data.curse(uuid, curse);
+        BeginningEffects.applyCurse(player, curse);
+        helper.assertTrue(data.isCursed(uuid), "the player must be cursed");
+
+        BeginningEffects.tick(server, 60_000L, true);
+        assertMillis(helper, data.curseRemaining(uuid), curse - 60_000L, "curse time of an online player");
+        MobEffectInstance slowness = player.getEffect(MobEffects.MOVEMENT_SLOWDOWN);
+        long expectedTicks = (curse - 60_000L) / 50L;
+        helper.assertTrue(slowness != null && Math.abs(slowness.getDuration() - expectedTicks) <= 40,
+                "Slowness must follow the curse clock: expected ~" + expectedTicks + " ticks, got " + slowness);
+        helper.assertTrue(player.hasEffect(MobEffects.WEAKNESS), "the curse includes Weakness");
+
+        player.setGameMode(GameType.SPECTATOR);
+        BeginningEffects.tick(server, 60_000L, true);
+        assertMillis(helper, data.curseRemaining(uuid), curse - 60_000L, "the curse time of a spectator does not run");
+        player.setGameMode(GameType.SURVIVAL);
+
+        CompoundTag saved = data.save(new CompoundTag(), registries);
+        assertMillis(helper, BeginningCurseData.factory().deserializer().apply(saved, registries).curseRemaining(uuid), curse - 60_000L,
+                "the curse time must be saved");
+
+        BeginningEffects.tick(server, curse, true);
+        helper.assertTrue(!data.isCursed(uuid), "the curse must end with its time");
+        helper.assertTrue(!player.hasEffect(MobEffects.MOVEMENT_SLOWDOWN) && !player.hasEffect(MobEffects.WEAKNESS),
+                "Slowness and Weakness end together with the milk ban");
+
+        long blessing = timings.beginningBlessingMillis();
+        data.bless(uuid, blessing);
+        BeginningEffects.applyBlessing(player, blessing);
+        BeginningEffects.tick(server, 60_000L, true);
+        assertMillis(helper, data.blessingRemaining(uuid), blessing - 60_000L, "blessing time of an online player");
+        MobEffectInstance resistance = player.getEffect(MobEffects.DAMAGE_RESISTANCE);
+        helper.assertTrue(resistance != null && resistance.getAmplifier() == 1, "the blessing is Resistance II, got " + resistance);
+        player.removeEffect(MobEffects.DAMAGE_RESISTANCE);
+        BeginningEffects.tick(server, 50L, true);
+        helper.assertTrue(data.blessingRemaining(uuid) == 0L, "a blessing removed by milk is over");
+
+        // Format 1 (absolute "Until"): at most the curse duration of the profile is left; expired curses are dropped.
+        CompoundTag v1 = new CompoundTag();
+        ListTag cursed = new ListTag();
+        UUID longCurse = UUID.randomUUID();
+        UUID expired = UUID.randomUUID();
+        for (UUID id : List.of(longCurse, expired)) {
+            CompoundTag entry = new CompoundTag();
+            entry.putUUID("UUID", id);
+            entry.putLong("Until", System.currentTimeMillis() + (id == longCurse ? 1000L * PermadeathTimings.HOUR : -1_000L));
+            cursed.add(entry);
+        }
+        v1.put("Cursed", cursed);
+        BeginningCurseData migrated = BeginningCurseData.factory().deserializer().apply(v1, registries);
+        assertMillis(helper, migrated.curseRemaining(longCurse), curse, "an old curse is capped to the profile duration");
+        helper.assertTrue(!migrated.isCursed(expired), "an expired old curse is dropped");
+        finish(helper, player);
+    }
+
+    @GameTest(template = EMPTY, batch = "tmigration")
+    public static void formatOneTimersBecomeRemainingTimeOnce(GameTestHelper helper) {
+        HolderLookup.Provider registries = helper.getLevel().registryAccess();
+        PermadeathTimings timings = Permadeath.timings();
+        long now = System.currentTimeMillis();
+        CompoundTag v1 = new CompoundTag();
+        v1.putInt("FormatVersion", 1);
+        v1.putString("Mode", Permadeath.mode().name());
+        v1.putBoolean("Initialized", true);
+        v1.putInt("MaxEffectiveDay", 60);
+        v1.putIntArray("ExecutedMilestones", new int[]{10, 20, 30, 40, 50, 60});
+        v1.putLong("DeathTrainEnd", now + 2L * PermadeathTimings.HOUR);
+        v1.putLong("LifeOrbDeadline", now + PermadeathTimings.HOUR);
+        v1.putLong("ShulkerEventEnd", now - 1L);
+        PermadeathData data = PermadeathData.factory().deserializer().apply(v1, registries);
+        ProgressionState s = data.state();
+        helper.assertTrue(s.formatVersion == 1 && s.legacyTimers != null, "format 1 timers must be read as legacy timers");
+        CompoundTag unmigrated = data.save(new CompoundTag(), registries);
+        helper.assertTrue(unmigrated.getLong("DeathTrainEnd") == now + 2L * PermadeathTimings.HOUR,
+                "a format 1 file saved before the migration keeps its values");
+
+        List<String> log = TimerMigration.migrate(s, timings, now);
+        long orb = Math.min(PermadeathTimings.HOUR, timings.lifeOrbCountdownMillis());
+        helper.assertTrue(!log.isEmpty() && s.formatVersion == ProgressionState.CURRENT_FORMAT_VERSION && s.migratedFromVersion == 1,
+                "the migration must run once and be logged");
+        assertMillis(helper, s.deathTrainRemainingMillis, 2L * PermadeathTimings.HOUR, "storm: observable time, not scaled again");
+        assertMillis(helper, s.shulkerEventRemainingMillis, 0L, "an expired event stays over (never negative)");
+        assertMillis(helper, s.lifeOrbRemainingMillis, orb, "Life Orb time left, capped to the profile countdown");
+        helper.assertTrue(s.finalPhaseState == FinalPhaseState.ACTIVE, "a D60 world gets an active final challenge");
+        assertMillis(helper, s.finalPhaseRemainingMillis, orb + timings.finalPhaseMillis() - timings.lifeOrbCountdownMillis(),
+                "final timeline aligned with the Life Orb countdown");
+        helper.assertTrue(s.executedMilestones.contains(60), "milestones are kept");
+
+        CompoundTag migrated = data.save(new CompoundTag(), registries);
+        helper.assertTrue(!migrated.contains("DeathTrainEnd") && migrated.getCompound("FormatV1").contains("DeathTrainEnd"),
+                "format 2 stores remaining time; the old values are only kept for reference");
+        PermadeathData reloaded = PermadeathData.factory().deserializer().apply(migrated, registries);
+        helper.assertTrue(TimerMigration.migrate(reloaded.state(), timings, now + PermadeathTimings.HOUR).isEmpty(),
+                "a migrated world is never migrated again");
+        assertMillis(helper, reloaded.state().deathTrainRemainingMillis, 2L * PermadeathTimings.HOUR, "remaining time after a restart");
+
+        CompoundTag late = new CompoundTag();
+        late.putInt("FormatVersion", 1);
+        late.putInt("MaxEffectiveDay", 60);
+        late.putLong("LifeOrbDeadline", now - 1_000L);
+        ProgressionState expired = PermadeathData.factory().deserializer().apply(late, registries).state();
+        TimerMigration.migrate(expired, timings, now);
+        helper.assertTrue(expired.lifeOrbActive && expired.lifeOrbRemainingMillis == -1L, "an expired Life Orb deadline stays expired");
+        helper.succeed();
     }
 }

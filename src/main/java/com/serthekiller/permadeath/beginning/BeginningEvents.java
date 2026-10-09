@@ -10,8 +10,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
-import net.minecraft.world.effect.MobEffectInstance;
-import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 
@@ -29,7 +27,6 @@ import java.util.List;
  * </ul>
  */
 public final class BeginningEvents {
-    private static final int BLESSING_DURATION_TICKS = 864000;
     private static boolean wasStormActive;
 
     private BeginningEvents() {
@@ -71,9 +68,15 @@ public final class BeginningEvents {
         grantBlessing(player);
     }
 
-    /** Resistance II for 12 h and the announcement (also /permadeath bendicion, plugin /pdc beginning bendicion). */
+    /**
+     * Resistance II for {@code PermadeathTimings#beginningBlessingMillis} of the player's own play time (GAME60 10 min,
+     * REAL30 6 h; kept on time by {@link BeginningEffects}) and the announcement (also /permadeath bendicion, plugin
+     * /pdc beginning bendicion).
+     */
     public static void grantBlessing(ServerPlayer player) {
-        player.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, BLESSING_DURATION_TICKS, 1, false, true, true));
+        long millis = Permadeath.timings().beginningBlessingMillis();
+        BeginningCurseData.get(player.server).bless(player.getUUID(), millis);
+        BeginningEffects.applyBlessing(player, millis);
         Texts.broadcast(player.server, "§c[PERMADEATH] §d" + player.getGameProfile().getName()
                 + ". Enhorabuena, has recibido la bendición del comienzo por entrar primero a The Beginning. Suerte.");
     }

@@ -9,6 +9,7 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LegacyFabricStateTest {
@@ -32,11 +33,36 @@ class LegacyFabricStateTest {
         assertTrue(state.legacyMigrated);
         assertEquals(26, state.maxEffectiveDay);
         assertEquals(474, state.baseWorldDay);
-        assertEquals(now + 72000L * 50L, state.deathTrainEndEpochMillis);
+        // Fabric counted the storm in ticks paused while offline: the remaining time is kept as is (no profile factor).
+        assertEquals(72000L * 50L, state.deathTrainRemainingMillis);
         assertEquals(36000L * 50L, state.witherRemainingMillis.get(A));
-        assertEquals(-1L, state.lifeOrbDeadlineEpochMillis);
+        assertEquals(-1L, state.lifeOrbRemainingMillis);
         assertTrue(state.mikecrackEnabled);
         assertEquals(2, state.hyperApplesConsumed.get(A));
+    }
+
+    @Test
+    void lifeOrbDeadlineBecomesRemainingTime() {
+        long now = 1_800_000_000_000L;
+        LegacyFabricState running = new LegacyFabricState();
+        running.parseLifeOrbFile((now + 30L * 60_000L) + "\nfalse");
+        ProgressionState a = new ProgressionState();
+        running.applyTo(a, ProgressionMode.REAL30, 0, now);
+        assertEquals(30L * 60_000L, a.lifeOrbRemainingMillis);
+        assertFalse(a.lifeOrbActive);
+
+        LegacyFabricState capped = new LegacyFabricState();
+        capped.parseLifeOrbFile((now + 7L * 3_600_000L) + "\nfalse");
+        ProgressionState b = new ProgressionState();
+        capped.applyTo(b, ProgressionMode.GAME60, 0, now);
+        assertEquals(20L * 60_000L, b.lifeOrbRemainingMillis, "capped at the GAME60 countdown");
+
+        LegacyFabricState expired = new LegacyFabricState();
+        expired.parseLifeOrbFile((now - 1L) + "\nfalse");
+        ProgressionState c = new ProgressionState();
+        expired.applyTo(c, ProgressionMode.REAL30, 0, now);
+        assertTrue(c.lifeOrbActive, "an expired deadline stays expired");
+        assertEquals(-1L, c.lifeOrbRemainingMillis);
     }
 
     @Test

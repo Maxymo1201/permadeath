@@ -208,12 +208,12 @@ public final class DayRules {
         return 0.0;
     }
 
-    /** D60 periodic Wither: one Wither per player every 60 real minutes of presence in the Overworld. */
-    public static final long WITHER_INTERVAL_MILLIS = 60L * 60_000L;
+    /**
+     * D60 periodic Wither (one per player per interval of presence in the Overworld) and Life Orb (-16 max HP for
+     * players without it once the countdown ends). The interval and the countdown depend on the build profile:
+     * see {@code PermadeathTimings}.
+     */
     public static final int WITHER_FROM_DAY = 60;
-
-    /** D60 Life Orb: 8 real hours to obtain it, then -16 max HP for players without it. */
-    public static final long LIFE_ORB_COUNTDOWN_MILLIS = 8L * 60L * 60_000L;
     public static final int LIFE_ORB_FROM_DAY = 60;
     public static final double LIFE_ORB_PENALTY_HP = 16.0;
 

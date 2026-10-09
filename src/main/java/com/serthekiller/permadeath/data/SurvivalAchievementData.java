@@ -60,7 +60,7 @@ public final class SurvivalAchievementData extends SavedData {
         if (!stormResetUsed) {
             stormResetUsed = true;
             setDirty();
-            broadcastDisqualification(server, "§e/permadeath resetstorm §7o §e/permadeath reset");
+            broadcastDisqualification(server, "§e/permadeath resetstorm§7, §e/permadeath storm §7o §e/permadeath reset");
         }
     }
 

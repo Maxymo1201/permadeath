@@ -37,7 +37,7 @@ Estado del port: ✔ portado · ✚ portado con corrección · ≈ diferencia do
 | Muerte: espectador, títulos, sonidos, monumento, mensajes, reaparición automática y baneo | Sí (hilos) | Sí (planificador del servidor); sonido de Permadeath en todas las muertes (plugin) | ✚ | No |
 | Cabezas del monumento con fecha, hora y causa de muerte (plugin) | No | `DeathRecordsData` | ✚ | No |
 | Mensaje personal al morir | Sí | Sí | ✔ | No |
-| Death Train: duración por día, buffs de mobs, modo UHC desde el D50, barra de acción | Ticks | Epoch absoluto; buffs infinitos y Resistencia al fuego D50-59 (plugin); anuncio del modo UHC | ✚ | Sí (unit, duraciones y buffs; GameTest, buffs infinitos D50; servidor, persiste tras reiniciar) |
+| Death Train: duración por día, buffs de mobs, modo UHC desde el D50, barra de acción | Ticks | Tiempo activo restante escalado por perfil (GAME60 /72 mín. 60 s, REAL30 /2), en pausa sin supervivientes; buffs infinitos y Resistencia al fuego D50-59 (plugin); anuncio del modo UHC | ✚ | Sí (unit, duraciones y buffs; GameTest, buffs infinitos D50; servidor, persiste tras reiniciar) |
 | Tótems: tabla 0/1/3/5/7 % y 1/1/2/2/3 tótems | 1 % desde D0 | Tabla exacta | ✚ | Sí (unit, GameTest) |
 | Medalla de superviviente (D55) | Sí | Sí | ✔ | No |
 | −8 de vida máxima (D40) / −16 (D60) | Sí | Modificadores con ID estable | ✔ | Sí (unit, GameTest) |
@@ -45,8 +45,9 @@ Estado del port: ✔ portado · ✚ portado con corrección · ≈ diferencia do
 | Hyper Golden Apple+ (límite 1 → 2, +4 de vida persistente) | JSON | `SavedData` (JSON importado); efectos de manzana de oro y mensaje del plugin | ✚ | Sí (unit, límites) |
 | Super Golden Apple+ | Sí | Efectos de manzana de oro + Salud aumentada (plugin) | ✚ | Sí (GameTest) |
 | Huecos bloqueados D40 / D60 y reliquias | Sí | Sí; los objetos desplazados se sueltan; los bloqueadores no salen del inventario (plugin) | ✚ | Sí (GameTest, hueco 4 en D40); reliquias No |
-| Life Orb (8 h, −16 de vida máxima, barra de jefe) | Sí (quitaba también vida actual en cada reconexión) | Plazo absoluto; modificador permanente (plugin) | ✚ | Sí (GameTest) |
-| Wither cada 60 min reales (D60) | Ticks | ms reales | ✚ | No |
+| Life Orb (−16 de vida máxima, barra de jefe) | Sí, 8 h (quitaba también vida actual en cada reconexión) | 20 min / 4 h de tiempo activo desde el inicio del desafío final; modificador permanente (plugin) | ✚ | Sí (unit, GameTest) |
+| Wither periódico (D60) | 72000 ticks | 8 min / 30 min de presencia real por jugador en el Overworld, sin ráfagas | ✚ | Sí (GameTest) |
+| Desafío final del D60 (30 min / 6 h, victoria o derrota por jugador) | No | Sí: estados, evaluación única, persistencia | ✚ | Sí (unit, GameTest) |
 | PvP desde el D40 | Sí | Sí | ✔ | Sí (unit, GameTest) |
 | Ahogamiento ×5 / ×10 | +5 / +19 fijos | delta vanilla × multiplicador; golpes de 5 / 10 (plugin) | ✚ | Sí (unit, GameTest) |
 | Ceguera por lluvia en Death Train | 1/7500 en D50-59, hueco en D60 | 1/10000 en D40, 1/5000 desde D50 | ✚ | Sí (unit) |
@@ -100,7 +101,7 @@ Estado del port: ✔ portado · ✚ portado con corrección · ≈ diferencia do
 | Portal D40 en el Overworld | Solo al empezar la fase D40 | Hito D40 idempotente | ✚ | Sí (servidor: hito D40 una sola vez) |
 | The Beginning (dimensión, islas, corales, estructuras) | Sí | Mismos IDs y algoritmo | ✔ | Sí (servidor: la dimensión carga y se guarda); generación No |
 | Gateways (vacío D40-49, ida y vuelta D50+, tormenta) | Mixin | Mixin | ✔ | No |
-| Bendición, expulsión por tormenta y maldición | Sí | Sí | ✔ | No |
+| Bendición, expulsión por tormenta y maldición | Sí | Sí; maldición y bendición de 10 min / 6 h con los efectos sincronizados con su tiempo | ✚ | Sí (GameTest) |
 | Mobs de The Beginning, explosiones y Wither sin destruir bloques | Sí | Tabla de aparición y creepers del plugin, sin cubos, cofres del plugin, cierre durante el Death Train | ✚ | No |
 | Recetas por día (`min_day`) | `fabric:load_conditions` | `neoforge:conditions` + recarga en los umbrales | ✔ | No |
 | Antorchas sin receta (D40) y lingotes de horno → pepitas (D50) | Mixin | `RecipeFilter` | ✔ | Sí (GameTest, D40) |

@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Dedicated-server smoke + restart test of the PRODUCTION jars (build/libs/permadeath-<PROFILE>-neoforge-1.21.1.jar).
 #   1. boots a dedicated NeoForge server whose mods/ folder only contains the production jar,
-#      runs /permadeath status, setday 40, status, storm addHours 2, event shulkershell, status, debug, then stops it
-#   2. boots it again and checks that day 40 and the Death Train survived the restart and that milestone D40 did
-#      not run twice; then sets day 60 and checks that every chest of the nearest Ytic city of The Beginning (and of
-#      the islands around it) still rolls its loot and that only the two containers with fixed contents have no loot
+#      runs /permadeath status, setday 40, status, storm addHours 2, event shulkershell, status, tiempos, debug, then
+#      stops it. Nobody is online, so the active-time timers must stay paused at exactly 2h 00m / the event duration.
+#   2. boots it again and checks that day 40 and the remaining time of the Death Train and of the X2 Shulker Shells
+#      event survived the restart unchanged (stored as remaining active time, nothing consumed while stopped or
+#      empty) and that milestone D40 did not run twice; then sets day 60 (the final challenge waits for a survivor,
+#      the calendar stays on D60) and checks that every chest of the nearest Ytic city of The Beginning (and of the
+#      islands around it) still rolls its loot and that only the two containers with fixed contents have no loot
 #      table (/permadeath debug beginningloot)
 #
 # Runtimes (SMOKE_RUNTIME):
@@ -88,23 +91,39 @@ for PROFILE in "${PROFILES[@]}"; do
     prepare_dir "$DIR" "$JAR"
 
     # --- first boot -------------------------------------------------------------------------------------
+    case "$PROFILE" in
+        GAME60) SHULKER='10m 00s'; WITHER='8m 00s'; FINAL='30m 00s' ;;
+        REAL30) SHULKER='2h 00m'; WITHER='30m 00s'; FINAL='6h 00m' ;;
+        *) fail "unknown profile" ;;
+    esac
     run_server "$DIR" "$DIR/boot1.log" "permadeath status" "permadeath setday 40" "permadeath status" \
-        "permadeath storm addHours 2" "permadeath event shulkershell" "permadeath status" "permadeath debug" "save-all flush"
+        "permadeath storm addHours 2" "permadeath event shulkershell" "permadeath status" "permadeath tiempos" \
+        "permadeath debug" "save-all flush"
     grep -q "Calendar ${PROFILE} started" "$DIR/boot1.log" || fail "calendar ${PROFILE} not started"
     grep -q 'Milestone D40 executed' "$DIR/boot1.log" || fail "milestone D40 not executed on first boot"
     grep -q 'Día Permadeath: 40/60' "$DIR/boot1.log" || fail "status does not show day 40"
     grep -q 'Operación completada exitosamente' "$DIR/boot1.log" || fail "storm addHours failed"
     grep -q 'Se ha iniciado el evento correctamente' "$DIR/boot1.log" || fail "event shulkershell failed"
-    grep -q 'Death Train activo' "$DIR/boot1.log" || fail "status does not show the Death Train"
+    grep -q 'Death Train activo: quedan 2h 00m' "$DIR/boot1.log" || fail "status does not show the 2h Death Train (paused without players)"
+    grep -q "X2 Shulker Shells: quedan ${SHULKER}" "$DIR/boot1.log" || fail "the X2 Shulker Shells event does not last ${SHULKER}"
+    grep -q 'en pausa: ningún superviviente conectado' "$DIR/boot1.log" || fail "status does not say that the timers are paused"
+    grep -q "Tiempos de Permadeath (${PROFILE})" "$DIR/boot1.log" || fail "/permadeath tiempos failed"
+    sed 's/§.//g' "$DIR/boot1.log" | grep -q "Wither periódico D60: ${WITHER} .* Desafío final: ${FINAL}" \
+        || fail "wrong ${PROFILE} durations in /permadeath tiempos"
     if grep -Eiq 'mixin.*(apply|inject).*(fail|error)|InvalidInjectionException|InjectionError' "$DIR/boot1.log"; then fail "mixin errors"; fi
     if grep -Eq 'ERROR.*\[(permadeath|com\.serthekiller)' "$DIR/boot1.log"; then fail "errors logged by permadeath"; fi
 
     # --- restart -----------------------------------------------------------------------------------------
-    run_server "$DIR" "$DIR/boot2.log" "permadeath status" "permadeath setday 60" "permadeath debug beginningloot"
+    run_server "$DIR" "$DIR/boot2.log" "permadeath status" "permadeath setday 60" "permadeath status" "permadeath debug beginningloot"
     grep -q "Calendar ${PROFILE} started: PD day 40" "$DIR/boot2.log" || fail "day 40 not persisted across restart"
     if grep -q 'Milestone D40 executed' "$DIR/boot2.log"; then fail "milestone D40 executed twice"; fi
     grep -q 'Día Permadeath: 40/60' "$DIR/boot2.log" || fail "status after restart does not show day 40"
-    grep -q 'Death Train activo' "$DIR/boot2.log" || fail "the Death Train did not survive the restart"
+    grep -q 'Death Train activo: quedan 2h 00m' "$DIR/boot2.log" || fail "the Death Train did not keep its remaining time across the restart"
+    grep -q "X2 Shulker Shells: quedan ${SHULKER}" "$DIR/boot2.log" || fail "the X2 Shulker Shells event did not keep its remaining time"
+    grep -q 'Día Permadeath: 60/60' "$DIR/boot2.log" || fail "status does not show day 60"
+    grep -q 'el desafío final empieza cuando haya un superviviente conectado' "$DIR/boot2.log" || fail "the final challenge must wait for a survivor"
+    if grep -Eq 'Día Permadeath: 6[1-9]|D61' "$DIR/boot2.log"; then fail "the calendar went beyond D60"; fi
+    if grep -Eq 'ERROR.*\[(permadeath|com\.serthekiller)' "$DIR/boot2.log"; then fail "errors logged by permadeath after the restart"; fi
     # D60: the chests of the Ytic city and of the islands of The Beginning still have their loot.
     grep -Eq 'Cofres de The Beginning .*con tabla de loot: [1-9][0-9]*, vacíos: 0\)' "$DIR/boot2.log" || fail "empty chests in The Beginning on D60"
     # Only the two containers with fixed contents (trapped chest with tools, shulker box with gold) have no table.

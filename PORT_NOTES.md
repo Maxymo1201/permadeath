@@ -72,11 +72,12 @@ hosts basta para `./gradlew clean build`, los GameTests y `tools/server-smoke-te
 * **Marcas persistentes por entidad.** `pmd_proc_<clave>` es el mismo formato de tag que Fabric, así que
   ningún mob se vuelve a procesar al recargar. Las IA (goals), que Minecraft no guarda, se restauran al
   cargar (`GoalRestorer`).
-* **Persistencia con `SavedData`.** `permadeath_progression` guarda calendario, Death Train, Life Orb,
-  temporizadores del Wither, manzanas, Mikecrack, arena del End y migración. Se mantienen los ficheros
-  `SavedData` de Fabric con el mismo nombre y las mismas claves: `permadeath_portal_state_day40`,
-  `permadeath_custom_messages`, `permadeath_server_mode`, `permadeath_beginning_curse` y
-  `permadeath_survival_achievement`. Los ficheros sueltos de Fabric (`permadeath_date.txt`,
+* **Persistencia con `SavedData`.** `permadeath_progression` (formato 2) guarda calendario, tiempo restante del
+  Death Train, del evento X2 Shulker Shells y de la Life Orb, desafío final del D60, temporizadores del Wither,
+  manzanas, Mikecrack, arena del End y migración. Se mantienen los ficheros `SavedData` de Fabric con el mismo
+  nombre y las mismas claves: `permadeath_portal_state_day40`, `permadeath_custom_messages`,
+  `permadeath_server_mode` y `permadeath_survival_achievement`; `permadeath_beginning_curse` se lee con sus claves
+  de Fabric y se convierte una vez al formato 2 (tiempo restante por jugador). Los ficheros sueltos de Fabric (`permadeath_date.txt`,
   `permadeath_storm.txt`, …) se importan una vez y **no se borran nunca**. En el log aparece
   `[Permadeath] Legacy state migrated successfully`.
 * **IDs.** Se conservan todos los `permadeath:*` (ítems, bloque, materiales de armadura, sonido, recetas,
